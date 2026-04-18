@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -39,7 +39,7 @@ model Pet {
   age          Int?
   weight       Float?
   gender       String?
-  image        String?  @db.LongText
+  image        String?  @db.Text
   medicalNotes String?
   appointments Appointment[]
   vaccinations Vaccination[]
@@ -64,7 +64,7 @@ model Hospital {
   isOpen24h   Boolean  @default(false)
   description String?
   rating      Float? 
-  image       String?  @db.LongText
+  image       String?  @db.Text
   mapUrl      String?
   appointments Appointment[]
   vaccinations Vaccination[]
