@@ -1,0 +1,7 @@
+tunnel: pet-backend
+credentials-file: C:/Users/USER/.cloudflared/efa415b8-5299-4786-be3c-81151768e399.json
+
+ingress:
+  - hostname: api.pup-peturgentpath.com
+    service: http://127.0.0.1:4000
+  - service: http_status:404

@@ -1,0 +1,127 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Light Mode - Bright & Vibrant */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 158 64% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 271 81% 56%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --accent: 340 82% 62%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 158 64% 52%;
+
+    --radius: 0.75rem;
+
+    --gradient-primary: linear-gradient(135deg, hsl(158 64% 52%) 0%, hsl(160 84% 39%) 100%);
+    --gradient-secondary: linear-gradient(135deg, hsl(271 81% 56%) 0%, hsl(280 70% 50%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsl(210 40% 98%) 0%, hsl(214 32% 95%) 50%, hsl(220 30% 92%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(340 82% 62%) 0%, hsl(350 80% 55%) 100%);
+    --gradient-luxury: linear-gradient(135deg, hsl(158 64% 52% / 0.08) 0%, hsl(271 81% 56% / 0.08) 100%);
+    --gradient-pink: linear-gradient(135deg, hsl(340 82% 52%) 0%, hsl(350 80% 55%) 100%);
+    
+    --shadow-luxury: 0 20px 60px -15px hsl(158 64% 52% / 0.25), 0 10px 30px -10px hsl(271 81% 56% / 0.15);
+    --shadow-soft: 0 4px 20px -4px hsl(0 0% 0% / 0.1);
+    --shadow-glow: 0 0 40px hsl(158 64% 52% / 0.2);
+
+    --sidebar-background: 210 40% 98%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 158 64% 52%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 96%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 158 64% 52%;
+  }
+
+  .dark {
+    /* Dark Mode - Rich & Premium */
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 47% 14%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 47% 14%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 158 64% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 271 81% 56%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+
+    --accent: 340 82% 62%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 158 64% 52%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(158 64% 52%) 0%, hsl(160 84% 39%) 100%);
+    --gradient-secondary: linear-gradient(135deg, hsl(271 81% 56%) 0%, hsl(280 70% 50%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsl(222 47% 11%) 0%, hsl(222 47% 14%) 50%, hsl(217 33% 17%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(340 82% 62%) 0%, hsl(350 80% 55%) 100%);
+    --gradient-luxury: linear-gradient(135deg, hsl(158 64% 52% / 0.15) 0%, hsl(271 81% 56% / 0.15) 100%);
+    --gradient-pink: linear-gradient(135deg, hsl(340 82% 52%) 0%, hsl(350 80% 55%) 100%);
+    
+    --shadow-luxury: 0 20px 60px -15px hsl(158 64% 52% / 0.5), 0 10px 30px -10px hsl(271 81% 56% / 0.3);
+    --shadow-soft: 0 4px 20px -4px hsl(0 0% 0% / 0.5);
+    --shadow-glow: 0 0 40px hsl(158 64% 52% / 0.4);
+
+    --sidebar-background: 222 47% 13%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 158 64% 52%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 33% 18%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 22%;
+    --sidebar-ring: 158 64% 52%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: 'Prompt', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', Ubuntu, Cantarell, 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}
