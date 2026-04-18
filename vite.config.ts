@@ -18,4 +18,12 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      onwarn(warning, warn) {
+        if (warning.code === 'UNRESOLVED_IMPORT' && warning.source?.includes('leaflet')) return;
+        warn(warning);
+      }
+    }
+  },
 }));
