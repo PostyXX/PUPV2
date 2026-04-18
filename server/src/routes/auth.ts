@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import { prisma } from '../lib/prisma.js';
-import { requireAuth } from '../middleware/auth.js';
+import { prisma } from '../lib/prisma';
+import { requireAuth } from '../middleware/auth';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { sendPasswordResetEmail } from '../lib/mailer.js';
-import { createUserSession } from './user-activity.js';
+import { sendPasswordResetEmail } from '../lib/mailer';
+import { createUserSession } from './user-activity';
 
 export const authRouter = Router();
 

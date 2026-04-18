@@ -2,16 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { authRouter } from './routes/auth.js';
-import { petsRouter } from './routes/pets.js';
-import { hospitalsRouter } from './routes/hospitals.js';
-import { appointmentsRouter } from './routes/appointments.js';
-import { vaccinationsRouter } from './routes/vaccinations.js';
-import { recordsRouter } from './routes/records.js';
-import { activityLogsRouter } from './routes/activityLogs.js';
-import { usersRouter } from './routes/users.js';
-import { notificationsRouter } from './routes/notifications.js';
-import { userActivityRouter } from './routes/user-activity.js';
+import { authRouter } from './routes/auth';
+import { petsRouter } from './routes/pets';
+import { hospitalsRouter } from './routes/hospitals';
+import { appointmentsRouter } from './routes/appointments';
+import { vaccinationsRouter } from './routes/vaccinations';
+import { recordsRouter } from './routes/records';
+import { activityLogsRouter } from './routes/activityLogs';
+import { usersRouter } from './routes/users';
+import { notificationsRouter } from './routes/notifications';
+import { userActivityRouter } from './routes/user-activity';
 
 dotenv.config();
 
