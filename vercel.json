@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/index.ts",
+      "use": "@vercel/node",
+      "config": { "includeFiles": ["server/**"] }
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "dist" }
+    }
+  ],
+  "routes": [
+    { "src": "/auth/(.*)", "dest": "/api/index.ts" },
+    { "src": "/users/(.*)", "dest": "/api/index.ts" },
+    { "src": "/pets/(.*)", "dest": "/api/index.ts" },
+    { "src": "/hospitals/(.*)", "dest": "/api/index.ts" },
+    { "src": "/appointments/(.*)", "dest": "/api/index.ts" },
+    { "src": "/vaccinations/(.*)", "dest": "/api/index.ts" },
+    { "src": "/medical-records/(.*)", "dest": "/api/index.ts" },
+    { "src": "/activity-logs/(.*)", "dest": "/api/index.ts" },
+    { "src": "/notifications/(.*)", "dest": "/api/index.ts" },
+    { "src": "/user-activity/(.*)", "dest": "/api/index.ts" },
+    { "src": "/health", "dest": "/api/index.ts" },
+    { "src": "/(.*)", "dest": "/$1" }
+  ]
+}

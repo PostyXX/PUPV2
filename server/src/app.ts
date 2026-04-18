@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import path from 'path';
 import { authRouter } from './routes/auth';
 import { petsRouter } from './routes/pets';
 import { hospitalsRouter } from './routes/hospitals';
@@ -45,8 +44,6 @@ app.use(cors({ origin: '*', methods: ['GET','POST','PUT','DELETE','OPTIONS'], al
 app.options('*', cors());
 app.use(express.json());
 
-app.use(express.static(path.join(__dirname, '../../dist')));
-
 app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/auth', authRouter);
@@ -59,9 +56,5 @@ app.use('/medical-records', recordsRouter);
 app.use('/activity-logs', activityLogsRouter);
 app.use('/notifications', notificationsRouter);
 app.use('/user-activity', userActivityRouter);
-
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(__dirname, '../../dist/index.html'));
-});
 
 export default app;
