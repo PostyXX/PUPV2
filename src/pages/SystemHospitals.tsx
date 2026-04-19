@@ -5,26 +5,10 @@ import { Button } from "@/components/ui/button";
 import { MapPin, Phone, Clock, Navigation } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
-
-interface SystemHospital {
-  id: string;
-  name: string;
-  address?: string | null;
-  phone?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  openingTime?: string | null;
-  closingTime?: string | null;
-  isOpen24h?: boolean | null;
-  description?: string | null;
-  image?: string | null;
-  mapUrl?: string | null;
-}
+import { getHospitals, DbHospital } from "@/lib/db";
 
 const SystemHospitals = () => {
-  const [items, setItems] = useState<SystemHospital[]>([]);
+  const [items, setItems] = useState<DbHospital[]>([]);
   const [loading, setLoading] = useState(false);
   const { t } = useI18n();
 
@@ -32,9 +16,7 @@ const SystemHospitals = () => {
     const fetchAll = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/hospitals`);
-        if (!res.ok) return;
-        const data = await res.json() as SystemHospital[];
+        const data = await getHospitals();
         setItems(data);
       } finally {
         setLoading(false);
@@ -43,7 +25,7 @@ const SystemHospitals = () => {
     fetchAll();
   }, []);
 
-  const navigateGoogleMaps = (h: SystemHospital) => {
+  const navigateGoogleMaps = (h: DbHospital) => {
     if (h.mapUrl) {
       window.open(h.mapUrl, "_blank");
       return;
@@ -53,12 +35,12 @@ const SystemHospitals = () => {
     window.open(url, "_blank");
   };
 
-  const callHospital = (h: SystemHospital) => {
+  const callHospital = (h: DbHospital) => {
     if (!h.phone) return;
     window.location.href = `tel:${h.phone.replace(/\s|-/g, "")}`;
   };
 
-  const getStatusBadge = (hospital: SystemHospital) => {
+  const getStatusBadge = (hospital: DbHospital) => {
     if (hospital.isOpen24h) {
       return <Badge className="bg-gradient-primary text-white">{t('hospitals.status.open24h')}</Badge>;
     }

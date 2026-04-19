@@ -3,8 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { getAllAdmins } from "@/lib/db";
 
 interface AdminUser {
   id: string;
@@ -20,35 +19,24 @@ const AdminListAdmins = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("pup_token");
-    if (!token) return;
-
     const fetchAdmins = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/auth/admins`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+        const data = await getAllAdmins();
+        setItems(data.map(u => ({ ...u, name: u.name ?? null })));
+      } catch {
+        toast({
+          title: t('admin.listAdmins.toast.loadError'),
+          description: t('admin.listAdmins.toast.loadErrorDesc'),
+          variant: "destructive",
         });
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          toast({
-            title: t('admin.listAdmins.toast.loadError'),
-            description: data?.error || t('admin.listAdmins.toast.loadErrorDesc'),
-            variant: "destructive",
-          });
-          return;
-        }
-        const data = await res.json() as AdminUser[];
-        setItems(data);
       } finally {
         setLoading(false);
       }
     };
 
     fetchAdmins();
-  }, [toast]);
+  }, []);
 
   return (
     <DashboardLayout>

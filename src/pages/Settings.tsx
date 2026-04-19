@@ -10,8 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
 import { getRole } from "@/lib/session";
 import { useI18n } from "@/lib/i18n";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { getMyProfile, updateMyProfile, getMyHospital, updateMyHospital } from "@/lib/db";
 
 const Settings = () => {
   const { toast } = useToast();
@@ -35,165 +34,79 @@ const Settings = () => {
   const [hospitalClosingTime, setHospitalClosingTime] = useState("20:00");
   const [hospitalIsOpen24h, setHospitalIsOpen24h] = useState(false);
 
-  // โหลดโปรไฟล์ของ user ปัจจุบัน
   useEffect(() => {
-    const token = localStorage.getItem('pup_token');
-    if (!token) return;
-
-    const fetchUserProfile = async () => {
+    const load = async () => {
       setProfileLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/users/me`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) return;
-        const data = await res.json() as {
-          name: string | null;
-          email: string;
-          phone?: string | null;
-          address?: string | null;
-        };
-
-        setProfileName(data.name || "");
-        setProfileEmail(data.email);
-        setProfilePhone(data.phone || "");
-        setProfileAddress(data.address || "");
+        const data = await getMyProfile();
+        if (data) {
+          setProfileName(data.name || "");
+          setProfileEmail(data.email);
+          setProfilePhone(data.phone || "");
+          setProfileAddress(data.address || "");
+        }
       } finally {
         setProfileLoading(false);
       }
     };
-
-    fetchUserProfile();
+    load();
   }, []);
 
-  // โหลดโปรไฟล์โรงพยาบาล ถ้า role เป็น hospital
   useEffect(() => {
     if (role !== 'hospital') return;
-    const token = localStorage.getItem('pup_token');
-    if (!token) return;
-
-    const fetchProfile = async () => {
+    const load = async () => {
       setHospitalLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/hospitals/me`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) return;
-        const data = await res.json() as {
-          name: string;
-          address?: string | null;
-          phone?: string | null;
-          latitude?: number | null;
-          longitude?: number | null;
-          openingTime?: string | null;
-          closingTime?: string | null;
-          isOpen24h?: boolean | null;
-        };
-
-        setHospitalName(data.name || "");
-        setHospitalAddress(data.address || "");
-        setHospitalPhone(data.phone || "");
-        setHospitalLatitude(data.latitude != null ? String(data.latitude) : "");
-        setHospitalLongitude(data.longitude != null ? String(data.longitude) : "");
-        setHospitalOpeningTime(data.openingTime || "08:00");
-        setHospitalClosingTime(data.closingTime || "20:00");
-        setHospitalIsOpen24h(Boolean(data.isOpen24h));
+        const data = await getMyHospital();
+        if (data) {
+          setHospitalName(data.name || "");
+          setHospitalAddress(data.address || "");
+          setHospitalPhone(data.phone || "");
+          setHospitalLatitude(data.latitude != null ? String(data.latitude) : "");
+          setHospitalLongitude(data.longitude != null ? String(data.longitude) : "");
+          setHospitalOpeningTime(data.openingTime || "08:00");
+          setHospitalClosingTime(data.closingTime || "20:00");
+          setHospitalIsOpen24h(Boolean(data.isOpen24h));
+        }
       } finally {
         setHospitalLoading(false);
       }
     };
-
-    fetchProfile();
+    load();
   }, [role]);
 
   const handleSaveProfile = async () => {
-    const token = localStorage.getItem('pup_token');
-    if (!token) return;
-
     setProfileLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/users/me`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: profileName,
-          phone: profilePhone || null,
-          address: profileAddress || null,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        toast({
-          title: t('settings.profile.toast.errorTitle'),
-          description: data?.error || t('settings.profile.toast.errorDescription'),
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const updated = await res.json();
+      const updated = await updateMyProfile({ name: profileName, phone: profilePhone || null, address: profileAddress || null });
       setProfileName(updated.name || "");
       setProfilePhone(updated.phone || "");
       setProfileAddress(updated.address || "");
       setIsEditingProfile(false);
-
-      toast({
-        title: t('settings.profile.toast.successTitle'),
-        description: t('settings.profile.toast.successDescription'),
-      });
+      toast({ title: t('settings.profile.toast.successTitle'), description: t('settings.profile.toast.successDescription') });
+    } catch (e: any) {
+      toast({ title: t('settings.profile.toast.errorTitle'), description: e.message, variant: "destructive" });
     } finally {
       setProfileLoading(false);
     }
   };
 
   const handleSaveHospital = async () => {
-    const token = localStorage.getItem('pup_token');
-    if (!token) return;
-
     setHospitalLoading(true);
     try {
-      const latitude = hospitalLatitude ? parseFloat(hospitalLatitude) : null;
-      const longitude = hospitalLongitude ? parseFloat(hospitalLongitude) : null;
-
-      const res = await fetch(`${API_BASE}/hospitals/me`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: hospitalName,
-          address: hospitalAddress,
-          phone: hospitalPhone,
-          latitude,
-          longitude,
-          openingTime: hospitalOpeningTime,
-          closingTime: hospitalClosingTime,
-          isOpen24h: hospitalIsOpen24h,
-        }),
+      await updateMyHospital({
+        name: hospitalName,
+        address: hospitalAddress || null,
+        phone: hospitalPhone || null,
+        latitude: hospitalLatitude ? parseFloat(hospitalLatitude) : null,
+        longitude: hospitalLongitude ? parseFloat(hospitalLongitude) : null,
+        openingTime: hospitalOpeningTime,
+        closingTime: hospitalClosingTime,
+        isOpen24h: hospitalIsOpen24h,
       });
-
-      if (!res.ok) {
-        toast({
-          title: t('settings.hospital.toast.errorTitle'),
-          description: t('settings.hospital.toast.errorDescription'),
-          variant: "destructive",
-        });
-        return;
-      }
-
-      toast({
-        title: t('settings.hospital.toast.successTitle'),
-        description: t('settings.hospital.toast.successDescription'),
-      });
+      toast({ title: t('settings.hospital.toast.successTitle'), description: t('settings.hospital.toast.successDescription') });
+    } catch {
+      toast({ title: t('settings.hospital.toast.errorTitle'), description: t('settings.hospital.toast.errorDescription'), variant: "destructive" });
     } finally {
       setHospitalLoading(false);
     }

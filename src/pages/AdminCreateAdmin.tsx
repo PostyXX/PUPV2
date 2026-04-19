@@ -6,8 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { createUserWithRole } from "@/lib/db";
 
 const AdminCreateAdmin = () => {
   const { toast } = useToast();
@@ -29,47 +28,19 @@ const AdminCreateAdmin = () => {
 
     setCreating(true);
     try {
-      const token = localStorage.getItem("pup_token");
-      if (!token) {
-        toast({
-          title: t('admin.createAdmin.toast.authError'),
-          description: t('admin.createAdmin.toast.authErrorDesc'),
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const res = await fetch(`${API_BASE}/auth/admin/register`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          email,
-          password,
-          name,
-          role: "admin",
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        toast({
-          title: t('admin.createAdmin.toast.createError'),
-          description: data?.error || t('admin.createAdmin.toast.createErrorDesc'),
-          variant: "destructive",
-        });
-        return;
-      }
-
+      await createUserWithRole(email, password, name, 'admin');
       setName("");
       setEmail("");
       setPassword("");
-
       toast({
         title: t('admin.createAdmin.toast.createSuccess'),
         description: t('admin.createAdmin.toast.createSuccessDesc'),
+      });
+    } catch (e: any) {
+      toast({
+        title: t('admin.createAdmin.toast.createError'),
+        description: e.message || t('admin.createAdmin.toast.createErrorDesc'),
+        variant: "destructive",
       });
     } finally {
       setCreating(false);

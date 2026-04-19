@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { supabase } from "@/lib/supabase";
 
 const ForgotPassword = () => {
   const { toast } = useToast();
@@ -19,18 +18,10 @@ const ForgotPassword = () => {
     setIsLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/auth/forgot-password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email }),
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
       });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "ไม่สามารถส่งอีเมลรีเซ็ตรหัสผ่านได้");
-      }
+      if (error) throw new Error(error.message);
 
       toast({
         title: "ตรวจสอบอีเมลของคุณ",

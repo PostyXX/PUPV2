@@ -6,28 +6,13 @@ import { Label } from "@/components/ui/label";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
-
-interface Hospital {
-  id: string;
-  name: string;
-  address?: string | null;
-  phone?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  openingTime?: string | null;
-  closingTime?: string | null;
-  isOpen24h?: boolean | null;
-  description?: string | null;
-  image?: string | null;
-  mapUrl?: string | null;
-}
+import { getHospitals, updateHospital, DbHospital } from "@/lib/db";
+import { supabase } from "@/lib/supabase";
 
 const AdminHospitals = () => {
   const { toast } = useToast();
   const { t } = useI18n();
-  const [items, setItems] = useState<Hospital[]>([]);
+  const [items, setItems] = useState<DbHospital[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -63,15 +48,10 @@ const AdminHospitals = () => {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem("pup_token");
-    if (!token) return;
-
     const fetchAll = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/hospitals`);
-        if (!res.ok) return;
-        const data = await res.json() as Hospital[];
+        const data = await getHospitals();
         setItems(data);
       } finally {
         setLoading(false);
@@ -85,7 +65,7 @@ const AdminHospitals = () => {
     return h.name.toLowerCase().includes(search.toLowerCase());
   });
 
-  const handleSelect = (h: Hospital) => {
+  const handleSelect = (h: DbHospital) => {
     setSelectedId(h.id);
     setName(h.name || "");
     setAddress(h.address || "");
@@ -101,15 +81,12 @@ const AdminHospitals = () => {
 
   const handleSave = async () => {
     if (!selectedId) return;
-    const token = localStorage.getItem("pup_token");
-    if (!token) return;
-
     setLoading(true);
     try {
-      const body = {
+      const updated = await updateHospital(selectedId, {
         name,
-        address,
-        phone,
+        address: address || null,
+        phone: phone || null,
         latitude: latitude ? parseFloat(latitude) : null,
         longitude: longitude ? parseFloat(longitude) : null,
         openingTime,
@@ -117,31 +94,17 @@ const AdminHospitals = () => {
         isOpen24h,
         image,
         mapUrl: mapUrl || null,
-      };
-
-      const res = await fetch(`${API_BASE}/hospitals/${selectedId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
       });
-
-      if (!res.ok) {
-        toast({
-          title: t('admin.hospitals.toast.saveError'),
-          description: t('admin.hospitals.toast.saveErrorDesc'),
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const updated = await res.json() as Hospital;
       setItems(prev => prev.map(h => (h.id === updated.id ? updated : h)));
       toast({
         title: t('admin.hospitals.toast.saveSuccess'),
         description: t('admin.hospitals.toast.saveSuccessDesc'),
+      });
+    } catch {
+      toast({
+        title: t('admin.hospitals.toast.saveError'),
+        description: t('admin.hospitals.toast.saveErrorDesc'),
+        variant: "destructive",
       });
     } finally {
       setLoading(false);
@@ -149,37 +112,22 @@ const AdminHospitals = () => {
   };
 
   const handleDelete = async (id: string) => {
-    const token = localStorage.getItem("pup_token");
-    if (!token) return;
-
     if (!confirm(t('admin.hospitals.confirmDelete'))) return;
-
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/hospitals/${id}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        toast({
-          title: t('admin.hospitals.toast.deleteError'),
-          description: data?.error || t('admin.hospitals.toast.deleteErrorDesc'),
-          variant: "destructive",
-        });
-        return;
-      }
-
+      const { error } = await supabase.from('Hospital').delete().eq('id', id);
+      if (error) throw new Error(error.message);
       setItems(prev => prev.filter(h => h.id !== id));
-      if (selectedId === id) {
-        setSelectedId(null);
-      }
+      if (selectedId === id) setSelectedId(null);
       toast({
         title: t('admin.hospitals.toast.deleteSuccess'),
         description: t('admin.hospitals.toast.deleteSuccessDesc'),
+      });
+    } catch {
+      toast({
+        title: t('admin.hospitals.toast.deleteError'),
+        description: t('admin.hospitals.toast.deleteErrorDesc'),
+        variant: "destructive",
       });
     } finally {
       setLoading(false);

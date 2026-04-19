@@ -9,11 +9,9 @@ import { mockHospitals, Hospital, Pet } from "@/data/mockData";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { MapContainer, TileLayer, Marker, Popup, Circle } from "react-leaflet";
 import L from "leaflet";
-import { getRole, getUserId } from "@/lib/session";
-import { loadArray, saveArray } from "@/lib/storage";
+import { getRole } from "@/lib/session";
 import { useI18n } from "@/lib/i18n";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { getHospitals, findPetByPetId } from "@/lib/db";
 
 class ErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { hasError: boolean }> {
   constructor(props: { fallback: ReactNode; children: ReactNode }) {
@@ -73,79 +71,52 @@ const Hospitals = () => {
     );
   }, []);
 
-  // โหลดรายชื่อโรงพยาบาล/คลินิกจาก backend
+  // โหลดรายชื่อโรงพยาบาล/คลินิกจาก Supabase
   useEffect(() => {
     const fetchHospitals = async () => {
       setLoadingLive(true);
       setLiveError(null);
       try {
-        let url = `${API_BASE}/hospitals`;
-        
-        // ถ้ามีตำแหน่งผู้ใช้ ให้เรียก API /hospitals/search-nearby เพื่อค้นหาจาก OpenStreetMap
-        if (userLocation) {
-          url = `${API_BASE}/hospitals/search-nearby?latitude=${userLocation.lat}&longitude=${userLocation.lng}&radius=${radiusKm}`;
-        }
-
-        const res = await fetch(url);
-        if (!res.ok) {
-          throw new Error(`โหลดข้อมูลโรงพยาบาลไม่สำเร็จ (${res.status})`);
-        }
-        const data = await res.json() as Array<{
-          id: string;
-          name: string;
-          type?: string;
-          address?: string | null;
-          phone?: string | null;
-          latitude?: number | null;
-          longitude?: number | null;
-          openingTime?: string | null;
-          closingTime?: string | null;
-          isOpen24h?: boolean | null;
-          description?: string | null;
-          rating?: number | null;
-          image?: string | null;
-          mapUrl?: string | null;
-          distance?: number;
-          source?: string;
-        }>;
+        const data = await getHospitals();
 
         if (!data || data.length === 0) {
-          setLiveError("ไม่พบโรงพยาบาลหรือคลินิกสัตว์ใกล้เคียง กรุณาลองเพิ่มรัศมีการค้นหา");
+          setLiveError("ไม่พบโรงพยาบาลหรือคลินิกสัตว์ กรุณาติดต่อผู้ดูแลระบบ");
           setHospitals([]);
           return;
         }
 
         const mapped: Hospital[] = data
-          .filter(h => {
-            // กรองตาม type ถ้าเลือก
-            if (filterType === 'all') return true;
-            return h.type === filterType;
-          })
-          .map(h => ({
-            id: h.id,
-            name: h.name,
-            type: h.type || 'hospital',
-            address: h.address || "ไม่มีข้อมูลที่อยู่",
-            phone: h.phone || "ไม่มีข้อมูลเบอร์โทร",
-            latitude: h.latitude ?? 0,
-            longitude: h.longitude ?? 0,
-            openingTime: h.openingTime || "08:00",
-            closingTime: h.closingTime || "20:00",
-            isOpen24h: Boolean(h.isOpen24h),
-            description: h.description || (h.source === 'openstreetmap' ? 'ข้อมูลจาก OpenStreetMap' : t('systemHospitals.defaultDesc')),
-            image: h.image || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?w=600",
-            rating: h.rating ?? 4.5,
-            specialties: [],
-            distance: h.distance ?? 0,
-            mapUrl: h.mapUrl || undefined,
-          }));
+          .filter(h => filterType === 'all' || h.type === filterType)
+          .map(h => {
+            const lat = h.latitude ?? 0;
+            const lng = h.longitude ?? 0;
+            const distance = userLocation
+              ? Math.round(Math.sqrt(Math.pow((lat - userLocation.lat) * 111, 2) + Math.pow((lng - userLocation.lng) * 111, 2)) * 10) / 10
+              : 0;
+            return {
+              id: h.id,
+              name: h.name,
+              type: h.type || 'hospital',
+              address: h.address || "ไม่มีข้อมูลที่อยู่",
+              phone: h.phone || "ไม่มีข้อมูลเบอร์โทร",
+              latitude: lat,
+              longitude: lng,
+              openingTime: h.openingTime || "08:00",
+              closingTime: h.closingTime || "20:00",
+              isOpen24h: Boolean(h.isOpen24h),
+              description: h.description || t('systemHospitals.defaultDesc'),
+              image: h.image || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?w=600",
+              rating: h.rating ?? 4.5,
+              specialties: [],
+              distance,
+              mapUrl: h.mapUrl || undefined,
+            };
+          });
 
         setHospitals(mapped);
-        if (mapped.length > 0) {
-          setLiveError(null);
-        }
+        setLiveError(null);
       } catch (e: any) {
-        setLiveError(e?.message || "ดึงข้อมูลโรงพยาบาลจากเซิร์ฟเวอร์ไม่สำเร็จ");
+        setLiveError(e?.message || "ดึงข้อมูลโรงพยาบาลไม่สำเร็จ");
         setHospitals([]);
       } finally {
         setLoadingLive(false);
@@ -173,85 +144,19 @@ const Hospitals = () => {
       return;
     }
 
-    // ถ้าเป็น role hospital ให้เรียก backend เพื่อเชื่อมสัตว์เลี้ยงเหมือนหน้า HospitalPets
-    if (role === 'hospital') {
-      const token = localStorage.getItem('pup_token');
-      if (!token) {
+    try {
+      const data = await findPetByPetId(trimmed);
+      if (!data) {
         setPetError(t('hospitals.linkPet.error'));
         setLinkedPet(null);
         return;
       }
-
-      try {
-        const res = await fetch(`${API_BASE}/pets/link/by-petid`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ petId: trimmed }),
-        });
-
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          throw new Error(data?.error || t('hospitals.linkPet.error'));
-        }
-
-        const data = await res.json() as Pet & { petId: string };
-        setLinkedPet(data as Pet);
-        setPetError(null);
-
-        // บันทึกลง localStorage key เดียวกับหน้า HospitalPets/Appointments
-        const hospitalId = getUserId();
-        const STORAGE_KEY = hospitalId
-          ? `pup_hospital_linked_pets_${hospitalId}`
-          : 'pup_hospital_linked_pets';
-
-        type LinkedPetLocal = {
-          id: string;
-          petId: string;
-          name: string;
-          type?: string | null;
-          breed?: string | null;
-          age?: number | null;
-          weight?: number | null;
-          gender?: string | null;
-        };
-
-        const existing = loadArray<LinkedPetLocal>(STORAGE_KEY, []);
-        const exists = existing.some(p => p.petId === data.petId);
-        if (!exists) {
-          const entry: LinkedPetLocal = {
-            id: (data as any).id || data.petId,
-            petId: data.petId,
-            name: data.name,
-            type: (data as any).type ?? null,
-            breed: (data as any).breed ?? null,
-            age: (data as any).age ?? null,
-            weight: (data as any).weight ?? null,
-            gender: (data as any).gender ?? null,
-          };
-          saveArray(STORAGE_KEY, [...existing, entry]);
-        }
-      } catch (e: any) {
-        setPetError(e?.message || t('hospitals.linkPet.error'));
-        setLinkedPet(null);
-      }
-
-      return;
-    }
-
-    // กรณี role อื่น (เช่น user) ใช้ lookup จาก local เหมือนเดิม
-    const pets = loadArray<Pet>('pup_pets', []);
-    const found = pets.find((p) => (p as any).petId === trimmed);
-    if (!found) {
-      setPetError(t('hospitals.linkPet.error'));
+      setLinkedPet(data as unknown as Pet);
+      setPetError(null);
+    } catch (e: any) {
+      setPetError(e?.message || t('hospitals.linkPet.error'));
       setLinkedPet(null);
-      return;
     }
-
-    setLinkedPet(found as Pet);
-    setPetError(null);
   };
 
   const getStatusBadge = (hospital: Hospital) => {

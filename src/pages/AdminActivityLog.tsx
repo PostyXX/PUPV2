@@ -4,8 +4,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getRole } from "@/lib/session";
 import { useI18n } from "@/lib/i18n";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { getActivityLogs } from "@/lib/db";
 
 interface ActivityLogItem {
   id: string;
@@ -25,23 +24,22 @@ const AdminActivityLog = () => {
   const role = getRole();
 
   useEffect(() => {
-    const fetchLogs = async () => {
-      const token = localStorage.getItem("pup_token");
-      if (!token || role !== "admin") return;
+    if (role !== "admin") return;
 
+    const fetchLogs = async () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${API_BASE}/activity-logs`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) {
-          throw new Error(t('admin.activityLog.error'));
-        }
-        const data = (await res.json()) as ActivityLogItem[];
-        setLogs(data);
+        const data = await getActivityLogs();
+        setLogs(data.map(l => ({
+          id: l.id,
+          adminId: l.adminId,
+          adminName: l.admin?.name ?? "-",
+          adminEmail: l.admin?.email ?? "-",
+          action: l.action,
+          details: l.details ?? "",
+          createdAt: l.createdAt,
+        })));
       } catch (e) {
         setError((e as Error).message);
       } finally {

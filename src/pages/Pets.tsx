@@ -9,11 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Heart, Edit, Trash2, Search, Filter } from "lucide-react";
 import { mockPets, Pet } from "@/data/mockData";
 import { useToast } from "@/hooks/use-toast";
-import { loadArray, saveArray } from "@/lib/storage";
 import { getRole } from "@/lib/session";
 import { useI18n } from "@/lib/i18n";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { getMyPets, getAllPets, createPet, updatePet, deletePet } from "@/lib/db";
 
 const Pets = () => {
   const [pets, setPets] = useState<Pet[]>([]);
@@ -57,42 +55,10 @@ const Pets = () => {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem("pup_token");
-
-    if (!token) {
-      const initial = loadArray<Pet>(STORAGE_KEY, mockPets);
-      const withIds = initial.map((p) =>
-        (p as any).petId
-          ? p
-          : { ...p, petId: generatePetId() }
-      );
-      setPets(withIds);
-      return;
-    }
-
-    const fetchPets = async () => {
+    const load = async () => {
       try {
-        const ageInt = combineYearMonthToAgeInt(ageYears, ageMonths);
-
-        const res = await fetch(`${API_BASE}/pets`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) throw new Error();
-        const data = await res.json() as Array<{
-          id: string;
-          petId: string;
-          name: string;
-          type: string;
-          breed?: string | null;
-          age?: number | null;
-          weight?: number | null;
-          gender?: string | null;
-          image?: string | null;
-          medicalNotes?: string | null;
-        }>;
-        const adapted: Pet[] = data.map(p => ({
+        const data = role === 'user' ? await getMyPets() : await getAllPets();
+        setPets(data.map(p => ({
           id: p.id,
           petId: p.petId,
           name: p.name,
@@ -103,28 +69,13 @@ const Pets = () => {
           gender: p.gender === 'male' || p.gender === 'female' ? p.gender : 'male',
           image: p.image || 'https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400',
           medicalNotes: p.medicalNotes || "",
-        }));
-        setPets(adapted);
+        })));
       } catch {
-        toast({
-          title: t('pets.toast.loadError'),
-          description: t('pets.toast.loadErrorDesc'),
-          variant: "destructive",
-        });
+        toast({ title: t('pets.toast.loadError'), description: t('pets.toast.loadErrorDesc'), variant: "destructive" });
       }
     };
-
-    fetchPets();
+    load();
   }, []);
-
-  useEffect(() => {
-    saveArray(STORAGE_KEY, pets);
-  }, [pets]);
-
-  const generatePetId = () => {
-    const rand = Math.floor(100000 + Math.random() * 900000);
-    return `P-${rand}`;
-  };
 
   const displayedPets = pets
     .filter((p) =>
@@ -224,92 +175,23 @@ const Pets = () => {
   };
 
   const handleAddPet = async () => {
-    const token = localStorage.getItem("pup_token");
     const ageInt = combineYearMonthToAgeInt(ageYears, ageMonths);
-
-    // ถ้าไม่มี token ให้ทำงานแบบ local เดิม
-    if (!token) {
-      const newPet: Pet = {
-        id: Date.now().toString(),
-        petId: generatePetId(),
-        name,
-        type,
-        breed,
-        age: ageInt,
-        weight: Number(weight) || 0,
-        gender,
-        image: image || "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400",
-        medicalNotes: notes,
-      };
-      setPets((prev) => [newPet, ...prev]);
-      toast({
-        title: t('pets.toast.addSuccess'),
-        description: t('pets.toast.addSuccessDesc'),
-      });
-      setIsDialogOpen(false);
-      resetForm();
-      return;
-    }
-
     try {
-      const res = await fetch(`${API_BASE}/pets`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name,
-          type,
-          breed,
-          age: ageInt,
-          weight: Number(weight) || 0,
-          gender,
-          image: image || undefined,
-          medicalNotes: notes || undefined,
-        }),
-      });
-
-      if (!res.ok) throw new Error();
-      const p = await res.json() as {
-        id: string;
-        petId: string;
-        name: string;
-        type: string;
-        breed?: string | null;
-        age?: number | null;
-        weight?: number | null;
-        gender?: string | null;
-        image?: string | null;
-        medicalNotes?: string | null;
-      };
-
+      const p = await createPet({ name, type, breed: breed || null, age: ageInt, weight: Number(weight) || 0, gender, image: image || null, medicalNotes: notes || null });
       const newPet: Pet = {
-        id: p.id,
-        petId: p.petId,
-        name: p.name,
+        id: p.id, petId: p.petId, name: p.name,
         type: (['dog','cat','bird','rabbit','other'] as const).includes(p.type as any) ? p.type as Pet['type'] : 'other',
-        breed: p.breed || "",
-        age: p.age ?? 0,
-        weight: p.weight ?? 0,
+        breed: p.breed || "", age: p.age ?? 0, weight: p.weight ?? 0,
         gender: p.gender === 'male' || p.gender === 'female' ? p.gender : 'male',
         image: p.image || "https://images.unsplash.com/photo-1561037404-61cd46aa615b?w=400",
-        medicalNotes: p.medicalNotes || notes,
+        medicalNotes: p.medicalNotes || "",
       };
-
       setPets((prev) => [newPet, ...prev]);
-      toast({
-        title: t('pets.toast.addSuccess'),
-        description: t('pets.toast.addSuccessOnline'),
-      });
+      toast({ title: t('pets.toast.addSuccess'), description: t('pets.toast.addSuccessOnline') });
       setIsDialogOpen(false);
       resetForm();
     } catch {
-      toast({
-        title: t('pets.toast.addError'),
-        description: t('pets.toast.addErrorDesc'),
-        variant: "destructive",
-      });
+      toast({ title: t('pets.toast.addError'), description: t('pets.toast.addErrorDesc'), variant: "destructive" });
     }
   };
 
@@ -330,133 +212,31 @@ const Pets = () => {
 
   const handleUpdatePet = async () => {
     if (!editingPetId) return;
-    const token = localStorage.getItem("pup_token");
-
-    // ถ้าไม่มี token หรือ role ไม่ใช่ user ให้แก้เฉพาะ local
-    if (!token || role !== 'user') {
-      const ageInt = combineYearMonthToAgeInt(ageYears, ageMonths);
-
-      setPets(prev => prev.map(p =>
-        p.id === editingPetId
-          ? {
-              ...p,
-              name,
-              type,
-              breed,
-              age: ageInt,
-              weight: Number(weight) || 0,
-              gender,
-              image: image || p.image,
-              medicalNotes: notes,
-            }
-          : p
-      ));
-      toast({
-        title: t('pets.toast.updateSuccess'),
-        description: t('pets.toast.updateSuccessDesc'),
-      });
-      setIsDialogOpen(false);
-      resetForm();
-      return;
-    }
-
     try {
       const ageInt = combineYearMonthToAgeInt(ageYears, ageMonths);
-
-      const res = await fetch(`${API_BASE}/pets/${editingPetId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name,
-          type,
-          breed,
-          age: ageInt,
-          weight: Number(weight) || 0,
-          gender,
-          image: image || undefined,
-          medicalNotes: notes || undefined,
-        }),
-      });
-
-      if (!res.ok) throw new Error();
-      const p = await res.json() as {
-        id: string;
-        petId: string;
-        name: string;
-        type: string;
-        breed?: string | null;
-        age?: number | null;
-        weight?: number | null;
-        gender?: string | null;
-        image?: string | null;
-        medicalNotes?: string | null;
-      };
-
-      setPets(prev => prev.map(prevPet =>
-        prevPet.id === p.id
-          ? {
-              id: p.id,
-              petId: p.petId,
-              name: p.name,
-              type: (['dog','cat','bird','rabbit','other'] as const).includes(p.type as any) ? p.type as Pet['type'] : 'other',
-              breed: p.breed || "",
-              age: p.age ?? 0,
-              weight: p.weight ?? 0,
-              gender: p.gender === 'male' || p.gender === 'female' ? p.gender : 'male',
-              image: p.image || prevPet.image,
-              medicalNotes: p.medicalNotes || "",
-            }
-          : prevPet
-      ));
-
-      toast({
-        title: t('pets.toast.updateSuccess'),
-        description: t('pets.toast.updateSuccessOnline'),
-      });
+      const p = await updatePet(editingPetId, { name, type, breed: breed || null, age: ageInt, weight: Number(weight) || 0, gender, image: image || null, medicalNotes: notes || null });
+      setPets(prev => prev.map(prevPet => prevPet.id === p.id ? {
+        id: p.id, petId: p.petId, name: p.name,
+        type: (['dog','cat','bird','rabbit','other'] as const).includes(p.type as any) ? p.type as Pet['type'] : 'other',
+        breed: p.breed || "", age: p.age ?? 0, weight: p.weight ?? 0,
+        gender: p.gender === 'male' || p.gender === 'female' ? p.gender : 'male',
+        image: p.image || prevPet.image, medicalNotes: p.medicalNotes || "",
+      } : prevPet));
+      toast({ title: t('pets.toast.updateSuccess'), description: t('pets.toast.updateSuccessOnline') });
       setIsDialogOpen(false);
       resetForm();
     } catch {
-      toast({
-        title: t('pets.toast.updateError'),
-        description: t('pets.toast.updateErrorDesc'),
-        variant: "destructive",
-      });
+      toast({ title: t('pets.toast.updateError'), description: t('pets.toast.updateErrorDesc'), variant: "destructive" });
     }
   };
 
   const handleDeletePet = async (id: string) => {
-    const token = localStorage.getItem("pup_token");
-    if (!token || role !== 'user') {
-      setPets(pets.filter(pet => pet.id !== id));
-      toast({
-        title: t('pets.toast.deleteSuccess'),
-        description: t('pets.toast.deleteSuccessDesc'),
-      });
-      return;
-    }
-
     try {
-      const res = await fetch(`${API_BASE}/pets/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) throw new Error();
+      await deletePet(id);
       setPets(pets.filter(pet => pet.id !== id));
-      toast({
-        title: t('pets.toast.deleteSuccess'),
-        description: t('pets.toast.deleteSuccessOnline'),
-      });
+      toast({ title: t('pets.toast.deleteSuccess'), description: t('pets.toast.deleteSuccessOnline') });
     } catch {
-      toast({
-        title: t('pets.toast.deleteError'),
-        description: t('pets.toast.deleteErrorDesc'),
-        variant: "destructive",
-      });
+      toast({ title: t('pets.toast.deleteError'), description: t('pets.toast.deleteErrorDesc'), variant: "destructive" });
     }
   };
 

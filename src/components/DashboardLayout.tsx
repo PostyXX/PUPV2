@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import ChatWidget from "@/components/ChatWidget";
 import { useI18n } from "@/lib/i18n";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { getMyNotifications, markNotificationsRead } from "@/lib/db";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -62,30 +62,16 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   }, [theme]);
 
   useEffect(() => {
-    const token = localStorage.getItem('pup_token');
-    if (!token) return;
-
     let cancelled = false;
 
     const fetchNotifications = async () => {
       try {
-        const res = await fetch(`${API_BASE}/notifications/my`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) return;
-        const data = await res.json();
+        const list = await getMyNotifications();
         if (cancelled) return;
-
-        const list = Array.isArray(data) ? data : [];
-        const newUnread = list.filter((n: any) => !n.read).length;
-
-        // ไม่เล่นเสียงครั้งแรกที่โหลด แต่ถ้าหลังจากนั้น unread เพิ่มขึ้น ให้เล่นเสียง
+        const newUnread = list.filter((n) => !n.read).length;
         if (initializedRef.current && newUnread > prevUnreadRef.current) {
           playNotificationSound();
         }
-
         prevUnreadRef.current = newUnread;
         initializedRef.current = true;
         setNotifications(list);
@@ -94,11 +80,8 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
       }
     };
 
-    // โหลดครั้งแรกทันที
     fetchNotifications();
-    // จากนั้น poll ทุก ๆ 3 วินาที ให้เห็นผลเร็วขึ้นโดยไม่ต้องรีเฟรชหน้า
-    const interval = window.setInterval(fetchNotifications, 3000);
-
+    const interval = window.setInterval(fetchNotifications, 10000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -106,22 +89,12 @@ const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   }, []);
 
   const handleMarkAllRead = async () => {
-    const token = localStorage.getItem('pup_token');
-    if (!token) return;
     try {
-      await fetch(`${API_BASE}/notifications/my/read`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ all: true }),
-      });
-      // อัปเดตสถานะในหน้าให้เป็นอ่านทั้งหมดทันที
+      await markNotificationsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       prevUnreadRef.current = 0;
     } catch {
-      // เงียบไว้ ถ้าทำไม่สำเร็จ รอบ polling ถัดไปจะ sync ให้
+      // ignore
     }
   };
 

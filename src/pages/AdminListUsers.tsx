@@ -5,8 +5,7 @@ import { Input } from "@/components/ui/input";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { getAllUsers, getUserDetail, deleteUserDb } from "@/lib/db";
 
 interface UserRow {
   id: string;
@@ -53,104 +52,48 @@ const AdminListUsers = () => {
   const [selected, setSelected] = useState<UserDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("pup_token") : null;
-
   useEffect(() => {
-    if (!token) return;
-
-    const fetchUsers = async () => {
+    const load = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/auth/users`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          toast({
-            title: t('admin.listUsers.toast.loadError'),
-            description: data?.error || t('admin.listUsers.toast.loadErrorDesc'),
-            variant: "destructive",
-          });
-          return;
-        }
-        const data = await res.json() as UserRow[];
+        const data = await getAllUsers();
         setItems(data.map(u => ({ ...u, name: u.name ?? "" })));
+      } catch {
+        toast({ title: t('admin.listUsers.toast.loadError'), description: t('admin.listUsers.toast.loadErrorDesc'), variant: "destructive" });
       } finally {
         setLoading(false);
       }
     };
-
-    fetchUsers();
-  }, [token, toast]);
+    load();
+  }, []);
 
   const filtered = items.filter(u => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return (
-      u.name.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q)
-    );
+    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
   });
 
   const loadDetail = async (id: string) => {
-    if (!token) return;
     setDetailLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/auth/users/${id}/detail`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        toast({
-          title: t('admin.listUsers.toast.loadDetailError'),
-          description: data?.error || t('admin.listUsers.toast.loadDetailErrorDesc'),
-          variant: "destructive",
-        });
-        return;
-      }
-      const detail = await res.json() as UserDetail;
-      setSelected(detail);
+      const detail = await getUserDetail(id);
+      setSelected(detail as any);
+    } catch {
+      toast({ title: t('admin.listUsers.toast.loadDetailError'), description: t('admin.listUsers.toast.loadDetailErrorDesc'), variant: "destructive" });
     } finally {
       setDetailLoading(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!token) return;
     if (!confirm(t('admin.listUsers.confirmDelete'))) return;
-
     try {
-      const res = await fetch(`${API_BASE}/auth/users/${id}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        toast({
-          title: t('admin.listUsers.toast.deleteError'),
-          description: data?.error || t('admin.listUsers.toast.deleteErrorDesc'),
-          variant: "destructive",
-        });
-        return;
-      }
+      await deleteUserDb(id);
       setItems(prev => prev.filter(u => u.id !== id));
       if (selected?.id === id) setSelected(null);
-      toast({
-        title: t('admin.listUsers.toast.deleteSuccess'),
-        description: t('admin.listUsers.toast.deleteSuccessDesc'),
-      });
+      toast({ title: t('admin.listUsers.toast.deleteSuccess'), description: t('admin.listUsers.toast.deleteSuccessDesc') });
     } catch {
-      toast({
-        title: t('admin.listUsers.toast.error'),
-        description: t('admin.listUsers.toast.errorDesc'),
-        variant: "destructive",
-      });
+      toast({ title: t('admin.listUsers.toast.deleteError'), description: t('admin.listUsers.toast.deleteErrorDesc'), variant: "destructive" });
     }
   };
 

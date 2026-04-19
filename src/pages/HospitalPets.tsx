@@ -1,24 +1,14 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Heart, Search } from "lucide-react";
-import { loadArray, saveArray } from "@/lib/storage";
-import { getUserId } from "@/lib/session";
+import { findPetByPetId, DbPet } from "@/lib/db";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
-
-interface LinkedPet {
-  id: string;
-  petId: string;
-  name: string;
-  type?: string | null;
-  breed?: string | null;
-  age?: number | null;
-  weight?: number | null;
-  gender?: string | null;
+interface LinkedPet extends DbPet {
+  ownerName?: string;
 }
 
 const HospitalPets = () => {
@@ -28,69 +18,10 @@ const HospitalPets = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const hospitalId = getUserId();
-  const STORAGE_KEY = hospitalId
-    ? `pup_hospital_linked_pets_${hospitalId}`
-    : "pup_hospital_linked_pets";
-
-  useEffect(() => {
-    const stored = loadArray<LinkedPet>(STORAGE_KEY, []);
-    const token = localStorage.getItem("pup_token");
-
-    // ถ้ายังไม่มี token หรือไม่มีอะไรใน localStorage ให้ใช้ตามที่เก็บไว้ก่อน
-    if (!token || stored.length === 0) {
-      setPets(stored);
-      return;
-    }
-
-    let cancelled = false;
-
-    const refreshFromBackend = async () => {
-      const refreshed: LinkedPet[] = [];
-
-      for (const p of stored) {
-        try {
-          const res = await fetch(`${API_BASE}/pets/link/by-petid`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ petId: p.petId }),
-          });
-
-          if (!res.ok) continue;
-          const data = (await res.json()) as LinkedPet;
-          refreshed.push(data);
-        } catch {
-          // ถ้าดึงตัวใดตัวหนึ่งไม่สำเร็จ (เช่น pet ถูกลบไปแล้ว) ก็ข้ามไปเฉยๆ
-        }
-      }
-
-      if (!cancelled) {
-        // ถ้า backend มีปัญหาหรือดึงข้อมูลไม่ได้ ให้ยังใช้ข้อมูลเดิมจาก localStorage แทน
-        setPets(refreshed.length > 0 ? refreshed : stored);
-      }
-    };
-
-    refreshFromBackend();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    saveArray(STORAGE_KEY, pets);
-  }, [pets]);
-
   const filteredPets = pets.filter((p) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
-    return (
-      p.petId.toLowerCase().includes(q) ||
-      p.name.toLowerCase().includes(q)
-    );
+    return p.petId.toLowerCase().includes(q) || p.name.toLowerCase().includes(q);
   });
 
   const handleRemovePet = (id: string) => {
@@ -102,37 +33,16 @@ const HospitalPets = () => {
     const trimmed = petIdInput.trim();
     if (!trimmed) return;
 
-    const token = localStorage.getItem("pup_token");
-    if (!token) {
-      toast({
-        title: "ยังไม่ได้เข้าสู่ระบบ",
-        description: "กรุณาเข้าสู่ระบบในฐานะโรงพยาบาลก่อน",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/pets/link/by-petid`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ petId: trimmed }),
-      });
+      const data = await findPetByPetId(trimmed);
+      if (!data) throw new Error("ไม่พบสัตว์เลี้ยงตามรหัสที่ระบุ");
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "ไม่พบสัตว์เลี้ยงตามรหัสที่ระบุ");
-      }
-
-      const data = await res.json() as LinkedPet;
       setPets((prev) => {
         const exists = prev.some((p) => p.petId === data.petId);
-        return exists ? prev : [...prev, data];
+        return exists ? prev : [...prev, { ...data, ownerName: data.owner?.name }];
       });
+      setPetIdInput("");
       toast({
         title: "เชื่อมข้อมูลสำเร็จ",
         description: `พบสัตว์เลี้ยงรหัส ${data.petId}`,

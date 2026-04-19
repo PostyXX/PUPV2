@@ -8,13 +8,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar as CalendarIcon, Clock, MapPin, Syringe } from "lucide-react";
-import { mockAppointments, mockVaccinations, Appointment, Vaccination, Pet } from "@/data/mockData";
-import { loadArray, saveArray } from "@/lib/storage";
+import { Appointment, Vaccination, Pet } from "@/data/mockData";
 import { getRole, getUserId } from "@/lib/session";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { getAppointments, getVaccinations, getMyPets, getAllPets, createAppointment, deleteAppointment as dbDeleteAppointment, updateAppointmentStatus, createVaccination, deleteVaccination as dbDeleteVaccination, getMedicalRecords, createMedicalRecord, findPetByPetId, getMyProfile } from "@/lib/db";
 
 const Appointments = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -61,139 +59,34 @@ const Appointments = () => {
   const [vaccinationSearch, setVaccinationSearch] = useState("");
 
   useEffect(() => {
-    const token = localStorage.getItem("pup_token");
-
-    // Always load local pets as fallback/base
-    const localUserPets = loadArray(PETS_KEY, []);
-    const hospitalLinkedPetsKey = currentUserId
-      ? `pup_hospital_linked_pets_${currentUserId}`
-      : "pup_hospital_linked_pets";
-    const localHospitalPets = loadArray(hospitalLinkedPetsKey, []);
-    setPets(role === 'hospital' ? localHospitalPets : localUserPets);
-
-    if (!token) {
-      // ถ้าไม่ได้ล็อกอิน ให้ user เห็นเป็นค่าว่าง ไม่ใช้ mock ค้างไว้
-      if (role === 'user') {
-        setAppointments([]);
-        setRecords([]);
-        setVaccinations([]);
-      } else {
-        setAppointments(loadArray(APPT_KEY, mockAppointments));
-        setRecords(loadArray(RECS_KEY, []));
-        setVaccinations(loadArray(VACC_KEY, mockVaccinations));
-      }
-      return;
-    }
-
-    const fetchAppointments = async () => {
+    const load = async () => {
       try {
-        const res = await fetch(`${API_BASE}/appointments`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) throw new Error();
-        const data = await res.json() as Array<{
-          id: string;
-          date: string;
-          time: string;
-          status: Appointment['status'];
-          reason?: string | null;
-          pet: { name: string; owner?: { name: string; email: string } };
-          hospital: { name: string };
-        }>;
-        const adapted: Appointment[] = data.map(a => ({
+        const [apptData, vacData, recs, petData] = await Promise.all([
+          getAppointments(),
+          getVaccinations(),
+          getMedicalRecords(),
+          role === 'user' ? getMyPets() : getAllPets(),
+        ]);
+        setAppointments(apptData.map(a => ({
           id: a.id,
-          petName: a.pet?.name || "สัตว์เลี้ยงของคุณ",
-          hospitalName: a.hospital?.name || "โรงพยาบาลสัตว์",
-          date: a.date,
-          time: a.time,
-          status: a.status,
-          reason: a.reason || "",
-        }));
-        setAppointments(adapted);
-      } catch {
-        // ถ้า backend ล้มเหลว ขณะล็อกอินอยู่ ให้แจ้งเตือนและไม่ fallback ไปใช้ local
-        toast({
-          title: t('appointments.toast.loadError'),
-          description: t('appointments.toast.loadErrorDesc'),
-          variant: "destructive",
-        });
-        setAppointments([]);
-      }
-    };
-
-    const fetchRecords = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/medical-records`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) throw new Error();
-        const data = await res.json() as Array<MedicalRecord>;
-        setRecords(data);
-      } catch {
-        toast({
-          title: t('appointments.toast.loadError'),
-          description: t('appointments.toast.loadErrorDesc'),
-          variant: "destructive",
-        });
-        setRecords([]);
-      }
-    };
-
-    const fetchVaccinations = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/vaccinations`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        if (!res.ok) throw new Error();
-        const data = await res.json() as Array<{
-          id: string;
-          vaccineName: string;
-          date: string;
-          nextDate: string;
-          pet: { name: string };
-          hospital: { name: string };
-        }>;
-        const adapted: Vaccination[] = data.map(v => ({
+          petName: (a.pet as any)?.name || "สัตว์เลี้ยงของคุณ",
+          hospitalName: (a.hospital as any)?.name || "โรงพยาบาลสัตว์",
+          date: a.date, time: a.time, status: a.status, reason: a.reason || "",
+        })));
+        setVaccinations(vacData.map(v => ({
           id: v.id,
-          petName: v.pet?.name || 'สัตว์เลี้ยงของคุณ',
-          vaccineName: v.vaccineName,
-          date: v.date,
-          nextDate: v.nextDate,
-          hospitalName: v.hospital?.name || 'โรงพยาบาลสัตว์',
-        }));
-        setVaccinations(adapted);
+          petName: (v.pet as any)?.name || 'สัตว์เลี้ยงของคุณ',
+          vaccineName: v.vaccineName, date: v.date, nextDate: v.nextDate,
+          hospitalName: (v.hospital as any)?.name || 'โรงพยาบาลสัตว์',
+        })));
+        setRecords(recs as any);
+        setPets(petData as any);
       } catch {
-        toast({
-          title: t('appointments.toast.loadError'),
-          description: t('appointments.toast.loadErrorDesc'),
-          variant: "destructive",
-        });
-        setVaccinations([]);
+        toast({ title: t('appointments.toast.loadError'), description: t('appointments.toast.loadErrorDesc'), variant: "destructive" });
       }
     };
-
-    fetchAppointments();
-    fetchRecords();
-    fetchVaccinations();
+    load();
   }, []);
-
-  useEffect(() => {
-    saveArray(APPT_KEY, appointments);
-  }, [appointments]);
-
-  useEffect(() => {
-    saveArray(VACC_KEY, vaccinations);
-  }, [vaccinations]);
-
-  useEffect(() => {
-    saveArray(RECS_KEY, records);
-  }, [records]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -237,123 +130,29 @@ const Appointments = () => {
   });
 
   const deleteAppointment = async (id: string) => {
-    const token = localStorage.getItem("pup_token");
-
-    // ลบจาก state ทันที (optimistic)
     setAppointments((prev) => prev.filter((a) => a.id !== id));
-
-    // ถ้าไม่มี token หรือไม่ได้เป็น hospital/admin ให้ลบเฉพาะฝั่ง local
-    if (!token || (role !== 'hospital' && role !== 'admin')) return;
-
-    try {
-      await fetch(`${API_BASE}/appointments/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-    } catch {
-      // ถ้า API ล้มเหลวจริง ๆ ในภายหลัง ตอนนี้จะยังไม่ดึงข้อมูลกลับมา
-    }
+    try { await dbDeleteAppointment(id); } catch { /* optimistic already done */ }
   };
 
   const deleteVaccination = async (id: string) => {
-    const token = localStorage.getItem("pup_token");
-    // ลบจาก state ทันที (optimistic)
     setVaccinations(prev => prev.filter(v => v.id !== id));
-
-    if (!token || (role !== 'hospital' && role !== 'admin')) return;
-
-    try {
-      await fetch(`${API_BASE}/vaccinations/${id}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-    } catch {
-      // ถ้า API ล้มเหลวจริง ๆ ในภายหลัง อาจต้อง reload ใหม่ แต่ตอนนี้ไม่ดึงกลับมา
-    }
+    try { await dbDeleteVaccination(id); } catch { /* optimistic already done */ }
   };
 
   const addAppointment = async () => {
-    const petById = linkedPetId ? pets.find(p => p.petId === linkedPetId) : undefined;
-    const token = localStorage.getItem("pup_token");
-
-    // ถ้ายังไม่มี backend session ให้ใช้ local แบบเดิม
-    if (!token || role !== 'hospital') {
-      const newAppt: Appointment & { userId?: string } = {
-        id: Date.now().toString(),
-        petId: petById?.petId || undefined,
-        petName: petById?.name || (role === 'hospital' ? 'สัตว์เลี้ยงของคุณ' : petName),
-        hospitalName: role === 'hospital' ? 'โรงพยาบาลของฉัน' : (hospitalName || 'โรงพยาบาลสัตว์'),
-        date,
-        time,
-        status: role === 'hospital' ? 'confirmed' : 'pending',
-        reason,
-        ...(role === 'hospital' ? { userId: linkedUserId } : {}),
-      };
-      setAppointments((prev) => [newAppt, ...prev]);
-      setIsNewAppOpen(false);
-      setPetName(""); setHospitalName(""); setDate(""); setTime(""); setReason(""); setLinkedUserId(""); setLinkedPetId("");
-      return;
-    }
-
     try {
-      const body = {
-        petIdCode: linkedPetId || undefined,
-        petId: undefined as string | undefined,
-        hospitalId: currentUserId!,
-        date,
-        time,
-        reason,
-      };
-
-      const res = await fetch(`${API_BASE}/appointments`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        toast({
-          title: t('appointments.toast.createError'),
-          description: t('appointments.toast.createErrorDesc'),
-          variant: "destructive",
-        });
-      } else {
-        // reload from backend ให้ข้อมูลตรงกับ DB
-        const tokenReload = localStorage.getItem("pup_token");
-        if (tokenReload) {
-          const listRes = await fetch(`${API_BASE}/appointments`, {
-            headers: { Authorization: `Bearer ${tokenReload}` },
-          });
-          if (listRes.ok) {
-            const data = await listRes.json() as Array<{
-              id: string;
-              date: string;
-              time: string;
-              status: Appointment['status'];
-              reason?: string | null;
-              pet: { name: string };
-              hospital: { name: string };
-            }>;
-            const adapted: Appointment[] = data.map(a => ({
-              id: a.id,
-              petName: a.pet?.name || "สัตว์เลี้ยงของคุณ",
-              hospitalName: a.hospital?.name || "โรงพยาบาลสัตว์",
-              date: a.date,
-              time: a.time,
-              status: a.status,
-              reason: a.reason || "",
-            }));
-            setAppointments(adapted);
-          }
-        }
+      let petDbId: string | undefined;
+      if (linkedPetId) {
+        const found = await findPetByPetId(linkedPetId);
+        petDbId = found?.id;
       }
+      const profile = await getMyProfile();
+      if (!profile) throw new Error('Not authenticated');
+      await createAppointment({ petId: petDbId!, hospitalId: profile.id, date, time, reason });
+      const fresh = await getAppointments();
+      setAppointments(fresh.map(a => ({ id: a.id, petName: (a.pet as any)?.name || "สัตว์เลี้ยงของคุณ", hospitalName: (a.hospital as any)?.name || "โรงพยาบาลสัตว์", date: a.date, time: a.time, status: a.status, reason: a.reason || "" })));
+    } catch {
+      toast({ title: t('appointments.toast.createError'), description: t('appointments.toast.createErrorDesc'), variant: "destructive" });
     } finally {
       setIsNewAppOpen(false);
       setPetName(""); setHospitalName(""); setDate(""); setTime(""); setReason(""); setLinkedUserId(""); setLinkedPetId("");
@@ -361,78 +160,19 @@ const Appointments = () => {
   };
 
   const addVaccination = async () => {
-    const petById = vacLinkedPetId ? pets.find(p => p.petId === vacLinkedPetId) : undefined;
-    const token = localStorage.getItem("pup_token");
-
-    // ถ้าไม่มี token หรือไม่ใช่ hospital ให้บันทึกแบบ local เช่นเดิม
-    if (!token || role !== 'hospital') {
-      const newVac: Vaccination = {
-        id: Date.now().toString(),
-        petName: petById?.name || (role === 'hospital' ? 'สัตว์เลี้ยงของคุณ' : vacPetName),
-        vaccineName,
-        date: vacDate,
-        nextDate: vacNextDate,
-        hospitalName: role === 'hospital' ? 'โรงพยาบาลของฉัน' : (vacHospitalName || 'โรงพยาบาลสัตว์'),
-      };
-      setVaccinations((prev) => [newVac, ...prev]);
-      setIsNewVacOpen(false);
-      setVacPetName(""); setVaccineName(""); setVacDate(""); setVacNextDate(""); setVacHospitalName(""); setVacLinkedPetId("");
-      return;
-    }
-
     try {
-      const body = {
-        petIdCode: vacLinkedPetId || undefined,
-        petId: undefined as string | undefined,
-        vaccineName,
-        date: vacDate,
-        nextDate: vacNextDate,
-        hospitalId: currentUserId!,
-      };
-
-      const res = await fetch(`${API_BASE}/vaccinations`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) throw new Error();
-
-      // reload จาก backend เพื่อให้ข้อมูลตรงกับ DB
-      const tokenReload = localStorage.getItem("pup_token");
-      if (tokenReload) {
-        const listRes = await fetch(`${API_BASE}/vaccinations`, {
-          headers: { Authorization: `Bearer ${tokenReload}` },
-        });
-        if (listRes.ok) {
-          const data = await listRes.json() as Array<{
-            id: string;
-            vaccineName: string;
-            date: string;
-            nextDate: string;
-            pet: { name: string };
-            hospital: { name: string };
-          }>;
-          const adapted: Vaccination[] = data.map(v => ({
-            id: v.id,
-            petName: v.pet?.name || 'สัตว์เลี้ยงของคุณ',
-            vaccineName: v.vaccineName,
-            date: v.date,
-            nextDate: v.nextDate,
-            hospitalName: v.hospital?.name || 'โรงพยาบาลสัตว์',
-          }));
-          setVaccinations(adapted);
-        }
+      let petDbId: string | undefined;
+      if (vacLinkedPetId) {
+        const found = await findPetByPetId(vacLinkedPetId);
+        petDbId = found?.id;
       }
+      const profile = await getMyProfile();
+      if (!profile) throw new Error('Not authenticated');
+      await createVaccination({ petId: petDbId!, hospitalId: profile.id, vaccineName, date: vacDate, nextDate: vacNextDate });
+      const fresh = await getVaccinations();
+      setVaccinations(fresh.map(v => ({ id: v.id, petName: (v.pet as any)?.name || 'สัตว์เลี้ยงของคุณ', vaccineName: v.vaccineName, date: v.date, nextDate: v.nextDate, hospitalName: (v.hospital as any)?.name || 'โรงพยาบาลสัตว์' })));
     } catch {
-      toast({
-        title: t('appointments.toast.createError'),
-        description: t('appointments.toast.createErrorDesc'),
-        variant: "destructive",
-      });
+      toast({ title: t('appointments.toast.createError'), description: t('appointments.toast.createErrorDesc'), variant: "destructive" });
     } finally {
       setIsNewVacOpen(false);
       setVacPetName(""); setVaccineName(""); setVacDate(""); setVacNextDate(""); setVacHospitalName(""); setVacLinkedPetId("");
@@ -440,30 +180,11 @@ const Appointments = () => {
   };
 
   const setStatus = async (id: string, status: Appointment['status']) => {
-    const token = localStorage.getItem("pup_token");
-    if (!token || (role !== 'hospital' && role !== 'admin')) {
-      setAppointments((prev) => prev.map(a => a.id === id ? { ...a, status } : a));
-      return;
-    }
-
     try {
-      const res = await fetch(`${API_BASE}/appointments/${id}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) throw new Error();
-      const updated = await res.json() as { id: string; status: Appointment['status'] };
-      setAppointments((prev) => prev.map(a => a.id === updated.id ? { ...a, status: updated.status } : a));
+      await updateAppointmentStatus(id, status);
+      setAppointments((prev) => prev.map(a => a.id === id ? { ...a, status } : a));
     } catch {
-      toast({
-        title: t('appointments.toast.statusError'),
-        description: t('appointments.toast.statusErrorDesc'),
-        variant: "destructive",
-      });
+      toast({ title: t('appointments.toast.statusError'), description: t('appointments.toast.statusErrorDesc'), variant: "destructive" });
     }
   };
 
@@ -475,50 +196,11 @@ const Appointments = () => {
 
   const addRecord = async () => {
     if (!recordAppId) return;
-    const token = localStorage.getItem("pup_token");
-
-    if (!token || (role !== 'hospital' && role !== 'admin')) {
-      const rec: MedicalRecord = {
-        id: Date.now().toString(),
-        appointmentId: recordAppId,
-        symptoms,
-        diagnosis,
-        treatment,
-        createdAt: new Date().toISOString(),
-      };
-      setRecords((prev) => [rec, ...prev]);
-      setIsRecOpen(false);
-      return;
-    }
-
     try {
-      const res = await fetch(`${API_BASE}/medical-records`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          appointmentId: recordAppId,
-          symptoms,
-          diagnosis,
-          treatment,
-        }),
-      });
-      if (!res.ok) throw new Error();
-      const rec = await res.json() as MedicalRecord;
-      setRecords((prev) => [rec, ...prev]);
+      const rec = await createMedicalRecord({ appointmentId: recordAppId, symptoms, diagnosis, treatment });
+      setRecords((prev) => [rec as any, ...prev]);
       setIsRecOpen(false);
     } catch {
-      const rec: MedicalRecord = {
-        id: Date.now().toString(),
-        appointmentId: recordAppId,
-        symptoms,
-        diagnosis,
-        treatment,
-        createdAt: new Date().toISOString(),
-      };
-      setRecords((prev) => [rec, ...prev]);
       setIsRecOpen(false);
     }
   };

@@ -7,8 +7,7 @@ import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useI18n } from "@/lib/i18n";
 import { Activity, Eye } from "lucide-react";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { getUsersActivity, getUserActivityDetail } from "@/lib/db";
 
 interface UserActivity {
   id: string;
@@ -47,39 +46,23 @@ const AdminUserActivity = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("pup_token") : null;
-
   useEffect(() => {
-    if (!token) return;
     fetchUsers();
-    
-    // Auto refresh every 30 seconds
     const interval = setInterval(fetchUsers, 30000);
     return () => clearInterval(interval);
-  }, [token]);
+  }, []);
 
   const fetchUsers = async () => {
-    if (!token) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/user-activity/users-activity`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      const data = await getUsersActivity();
+      setUsers(data as UserActivity[]);
+    } catch {
+      toast({
+        title: t('admin.userActivity.toast.loadError'),
+        description: t('admin.userActivity.toast.loadErrorDesc'),
+        variant: "destructive",
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        toast({
-          title: t('admin.userActivity.toast.loadError'),
-          description: data?.error || t('admin.userActivity.toast.loadErrorDesc'),
-          variant: "destructive",
-        });
-        return;
-      }
-      const data = await res.json() as UserActivity[];
-      setUsers(data);
-    } catch (error) {
-      console.error('Error fetching users activity:', error);
     } finally {
       setLoading(false);
     }
@@ -88,33 +71,22 @@ const AdminUserActivity = () => {
   const filtered = users.filter(u => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return (
-      u.name.toLowerCase().includes(q) ||
-      u.email.toLowerCase().includes(q)
-    );
+    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
   });
 
   const loadUserDetail = async (userId: string) => {
-    if (!token) return;
     setDetailLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/user-activity/users-activity/${userId}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        toast({
-          title: t('admin.userActivity.toast.loadDetailError'),
-          description: data?.error || t('admin.userActivity.toast.loadDetailErrorDesc'),
-          variant: "destructive",
-        });
-        return;
-      }
-      const detail = await res.json() as UserActivityDetail;
-      setSelectedUser(detail);
+      const detail = await getUserActivityDetail(userId);
+      if (!detail) return;
+      setSelectedUser(detail as UserActivityDetail);
       setDialogOpen(true);
+    } catch {
+      toast({
+        title: t('admin.userActivity.toast.loadDetailError'),
+        description: t('admin.userActivity.toast.loadDetailErrorDesc'),
+        variant: "destructive",
+      });
     } finally {
       setDetailLoading(false);
     }

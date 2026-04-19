@@ -4,11 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Heart, MapPin, MessageSquare, Calendar, Users, Hospital, Clock, Syringe, PawPrint, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getRole } from "@/lib/session";
-import { loadArray } from "@/lib/storage";
 import { mockAppointments, mockVaccinations, mockPets, Appointment, Vaccination, Pet } from "@/data/mockData";
 import { useI18n } from "@/lib/i18n";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { getAppointments, getVaccinations, getMyPets, getAllUsers, getHospitals } from "@/lib/db";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -23,110 +21,46 @@ const Dashboard = () => {
   const { t } = useI18n();
 
   useEffect(() => {
-    const token = localStorage.getItem("pup_token");
-
-    // โหลดสัตว์เลี้ยงจาก local เสมอเป็นฐานข้อมูลเริ่มต้น
-    setPets(loadArray("pup_pets", mockPets));
-
-    // ถ้าไม่มี token ให้ใช้ข้อมูลใน local / mock ตามเดิม
-    if (!token) {
-      setAppts(loadArray("pup_appointments", mockAppointments));
-      setVacs(loadArray("pup_vaccinations", mockVaccinations));
-      return;
-    }
-
-    const fetchDashboardData = async () => {
+    const load = async () => {
       try {
-        const [apptRes, vacRes] = await Promise.all([
-          fetch(`${API_BASE}/appointments`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${API_BASE}/vaccinations`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+        const [apptData, vacData, petData] = await Promise.all([
+          getAppointments(),
+          getVaccinations(),
+          getMyPets(),
         ]);
-
-        if (apptRes.ok) {
-          const data = await apptRes.json() as Array<{
-            id: string;
-            date: string;
-            time: string;
-            status: Appointment['status'];
-            reason?: string | null;
-            pet: { name: string };
-            hospital: { name: string };
-          }>;
-          const adapted: Appointment[] = data.map(a => ({
-            id: a.id,
-            petName: a.pet?.name || 'สัตว์เลี้ยงของคุณ',
-            hospitalName: a.hospital?.name || 'โรงพยาบาลสัตว์',
-            date: a.date,
-            time: a.time,
-            status: a.status,
-            reason: a.reason || "",
-          }));
-          setAppts(adapted);
-        } else {
-          setAppts(loadArray("pup_appointments", mockAppointments));
-        }
-
-        if (vacRes.ok) {
-          const data = await vacRes.json() as Array<{
-            id: string;
-            vaccineName: string;
-            date: string;
-            nextDate: string;
-            pet: { name: string };
-            hospital: { name: string };
-          }>;
-          const adapted: Vaccination[] = data.map(v => ({
-            id: v.id,
-            petName: v.pet?.name || 'สัตว์เลี้ยงของคุณ',
-            vaccineName: v.vaccineName,
-            date: v.date,
-            nextDate: v.nextDate,
-            hospitalName: v.hospital?.name || 'โรงพยาบาลสัตว์',
-          }));
-          setVacs(adapted);
-        } else {
-          setVacs(loadArray("pup_vaccinations", mockVaccinations));
-        }
+        setAppts(apptData.map(a => ({
+          id: a.id,
+          petName: (a.pet as any)?.name || 'สัตว์เลี้ยงของคุณ',
+          hospitalName: (a.hospital as any)?.name || 'โรงพยาบาลสัตว์',
+          date: a.date,
+          time: a.time,
+          status: a.status,
+          reason: a.reason || "",
+        })));
+        setVacs(vacData.map(v => ({
+          id: v.id,
+          petName: (v.pet as any)?.name || 'สัตว์เลี้ยงของคุณ',
+          vaccineName: v.vaccineName,
+          date: v.date,
+          nextDate: v.nextDate,
+          hospitalName: (v.hospital as any)?.name || 'โรงพยาบาลสัตว์',
+        })));
+        setPets(petData as any);
       } catch {
-        // ถ้า API ใช้งานไม่ได้ให้ fallback เป็น local
-        setAppts(loadArray("pup_appointments", mockAppointments));
-        setVacs(loadArray("pup_vaccinations", mockVaccinations));
+        // keep defaults
+      }
+
+      if (role === 'admin') {
+        try {
+          const [users, hospitals] = await Promise.all([getAllUsers(), getHospitals()]);
+          setTotalUsers(users.length);
+          setTotalHospitals(hospitals.length);
+        } catch {
+          // ignore
+        }
       }
     };
-
-    fetchDashboardData();
-
-    // ถ้าเป็น admin ให้ดึงสรุประบบ (จำนวนผู้ใช้และโรงพยาบาล)
-    if (role === 'admin') {
-      const fetchAdminSummary = async () => {
-        try {
-          const [usersRes, hospitalsRes] = await Promise.all([
-            fetch(`${API_BASE}/auth/users`, {
-              headers: { Authorization: `Bearer ${token}` },
-            }),
-            fetch(`${API_BASE}/hospitals`),
-          ]);
-
-          if (usersRes.ok) {
-            const users = await usersRes.json() as Array<{ id: string }>;
-            setTotalUsers(users.length);
-          }
-
-          if (hospitalsRes.ok) {
-            const hospitals = await hospitalsRes.json() as Array<{ id: string }>;
-            setTotalHospitals(hospitals.length);
-          }
-        } catch {
-          // ถ้าดึงสรุปไม่ได้ ปล่อยให้เป็น null
-        }
-      };
-
-      fetchAdminSummary();
-    }
+    load();
   }, []);
 
   // Derive dashboard data

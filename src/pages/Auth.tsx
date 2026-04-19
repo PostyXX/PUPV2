@@ -9,8 +9,7 @@ import { PawPrint, ArrowLeft } from "lucide-react";
 import { setSession } from "@/lib/session";
 import { useI18n } from "@/lib/i18n";
 import { supabase } from "@/lib/supabase";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { completeProfile, getMyProfile } from "@/lib/db";
 
 const Auth = () => {
   const navigate = useNavigate();
@@ -28,19 +27,9 @@ const Auth = () => {
     try {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) throw new Error(error.message);
+      if (!data.session) throw new Error('กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ');
 
-      const token = data.session?.access_token;
-      if (!token) throw new Error('ไม่ได้รับ session กรุณายืนยันอีเมลก่อน');
-
-      const res = await fetch(`${API_BASE}/auth/complete-profile`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: fullName, role: 'user' }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || 'สมัครสมาชิกไม่สำเร็จ');
-      const user = await res.json() as { id: string; role: 'user' | 'hospital' | 'admin'; name: string };
-
-      localStorage.setItem('pup_token', token);
+      const user = await completeProfile(fullName, 'user');
       setSession(user.role, user.id);
       toast({ title: t('auth.signupSuccess.title'), description: t('auth.signupSuccess.description') });
       navigate('/dashboard');
@@ -55,18 +44,12 @@ const Auth = () => {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw new Error(error.message);
 
-      const token = data.session.access_token;
+      const user = await getMyProfile();
+      if (!user) throw new Error('ไม่พบบัญชีผู้ใช้ในระบบ');
 
-      const res = await fetch(`${API_BASE}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error('ไม่พบบัญชีผู้ใช้ในระบบ');
-      const user = await res.json() as { id: string; role: 'user' | 'hospital' | 'admin'; name: string };
-
-      localStorage.setItem('pup_token', token);
       setSession(user.role, user.id);
       toast({ title: t('auth.signinSuccess.title'), description: t('auth.signinSuccess.description') });
       navigate('/dashboard');
