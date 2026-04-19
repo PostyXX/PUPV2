@@ -8,7 +8,7 @@ import { Heart, Search } from "lucide-react";
 import { loadArray, saveArray } from "@/lib/storage";
 import { getUserId } from "@/lib/session";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 interface LinkedPet {
   id: string;

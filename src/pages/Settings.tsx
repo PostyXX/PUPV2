@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { getRole } from "@/lib/session";
 import { useI18n } from "@/lib/i18n";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 const Settings = () => {
   const { toast } = useToast();

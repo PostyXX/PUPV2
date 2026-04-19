@@ -6,7 +6,7 @@ import { MapPin, Phone, Clock, Navigation } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 interface SystemHospital {
   id: string;

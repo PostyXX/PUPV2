@@ -8,7 +8,7 @@ import { loadArray } from "@/lib/storage";
 import { mockAppointments, mockVaccinations, mockPets, Appointment, Vaccination, Pet } from "@/data/mockData";
 import { useI18n } from "@/lib/i18n";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 const Dashboard = () => {
   const navigate = useNavigate();

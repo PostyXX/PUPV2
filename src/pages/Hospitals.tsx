@@ -13,7 +13,7 @@ import { getRole, getUserId } from "@/lib/session";
 import { loadArray, saveArray } from "@/lib/storage";
 import { useI18n } from "@/lib/i18n";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 class ErrorBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { hasError: boolean }> {
   constructor(props: { fallback: ReactNode; children: ReactNode }) {
