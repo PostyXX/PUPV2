@@ -6,110 +6,25 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Send, Bot, User } from "lucide-react";
-import { mockChatHistory, ChatMessage } from "@/data/mockData";
 import { useI18n } from "@/lib/i18n";
+import { chatComplete } from "@/lib/chat";
 
-const AI_API_ENABLED = import.meta.env.VITE_AI_API_ENABLED === 'true';
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-
-function generateRuleBasedResponse(text: string): string {
-  const t = text.toLowerCase();
-  const adv = "หากอาการรุนแรงหรือไม่ดีขึ้นภายใน 24 ชม. ควรพาสัตว์เลี้ยงไปพบสัตวแพทย์ทันที นี่เป็นเพียงคำแนะนำเบื้องต้น ไม่ใช่การวินิจฉัยจากสัตวแพทย์";
-
-  if (/อาเจียน|อ้วก|vomit/.test(t)) {
-    return `จากอาการอาเจียน แนะนำให้:\n\n1) งดอาหาร 6-12 ชม. แต่ให้จิบน้ำบ่อยๆ\n2) สังเกตอาเจียนร่วมกับถ่ายเหลว/เลือดหรือไม่\n3) ถ้ามีอาการซึมหรือมีเลือด ควรพบสัตวแพทย์ทันที\n\n${adv}`;
-  }
-  if (/ถ่ายเหลว|ท้องเสีย|diarr/.test(t)) {
-    return `อาการถ่ายเหลว แนะนำให้:\n\n1) ให้น้ำสะอาดและเกลือแร่สัตว์เลี้ยง\n2) งดอาหารมัน/นม\n3) หากถ่ายมีเลือดหรือมากกว่า 24 ชม. ให้พบสัตวแพทย์\n\n${adv}`;
-  }
-  if (/ไม่ยอมกิน|เบื่ออาหาร|ไม่กิน/.test(t)) {
-    return `เบื่ออาหาร/ไม่กิน แนะนำให้:\n\n1) ลองเปลี่ยนเนื้อสัมผัสอาหาร อุ่นเล็กน้อย\n2) ตรวจดูช่องปาก/ฟัน/เหงือก\n3) ถ้ายังไม่กิน >24 ชม. หรือมีไข้ ควรพบสัตวแพทย์\n\n${adv}`;
-  }
-  if (/ไอ|จาม|มีน้ำมูก|cough|snee/.test(t)) {
-    return `ไอ/จาม/น้ำมูก แนะนำให้:\n\n1) พักในที่อากาศถ่ายเท อุ่นพอเหมาะ\n2) เฝ้าระวังหายใจลำบาก/เขียวคล้ำ\n3) ถ้ามีไข้/ซึม/กินไม่ได้ ควรพบสัตวแพทย์\n\n${adv}`;
-  }
-  if (/ขนร่วง|ผิวหนัง|คัน|ผื่น/.test(t)) {
-    return `ปัญหาผิวหนัง/ขนร่วง:\n\n1) หลีกเลี่ยงการเกา สวมปลอกคอกันเลียถ้าจำเป็น\n2) อาบน้ำด้วยแชมพูอ่อนโยนสำหรับสัตว์\n3) หากเป็นวงชัด/มีหนอง/มีกลิ่น ควรพบสัตวแพทย์\n\n${adv}`;
-  }
-  return `รับทราบค่ะ ขอบคุณสำหรับข้อมูล\n\nคุณสามารถตรวจสอบเบื้องต้นได้ดังนี้:\n1) ดูว่าสัตว์เลี้ยงยังกินน้ำและขยับตัวได้ตามปกติหรือไม่\n2) สังเกตอาการผิดปกติ เช่น ชัก หายใจลำบาก ซึมมาก มีเลือดออก\n3) หากอาการไม่ดีขึ้นหรือมีสัญญาณอันตราย ควรพาไปพบสัตวแพทย์ทันที\n\n${adv}`;
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
 }
 
-async function callGeminiFlash(userText: string): Promise<string> {
-  if (!GEMINI_API_KEY) {
-    return generateRuleBasedResponse(userText);
-  }
-
-  const systemPrompt =
-    "คุณคือ \"PetCare AI\" ผู้ช่วยให้คำแนะนำเบื้องต้นเกี่ยวกับอาการป่วยของสัตว์เลี้ยงในบ้าน (เช่น สุนัข แมว) " +
-    "ต้องปฏิบัติตามกฎต่อไปนี้อย่างเคร่งครัด:\n" +
-    "- ห้ามวินิจฉัยโรคแทนสัตวแพทย์\n" +
-    "- ห้ามบอกชื่อโรคแบบยืนยัน 100%\n" +
-    "- ห้ามแนะนำยา ห้ามบอกชื่อยา ห้ามแนะนำให้ใช้ยาคนกับสัตว์\n" +
-    "- ให้คำแนะนำในระดับเบื้องต้นเท่านั้น เน้นสิ่งที่เจ้าของทำได้อย่างปลอดภัย (safe-first)\n" +
-    "- ถ้าอาการรุนแรง เช่น ชัก หายใจติดขัด ไม่กิน/ไม่ถ่าย มีเลือดออก ต้องแนะนำให้พบสัตวแพทย์ทันที\n" +
-    "- ทุกคำตอบต้องเตือนเสมอว่า \"นี่ไม่ใช่การวินิจฉัยโรคจากสัตวแพทย์จริง\"\n\n" +
-    "หลักการตอบ:\n" +
-    "1) ฟังคำอธิบายอาการจากผู้ใช้\n" +
-    "2) สรุประดับเบื้องต้นว่าอาจเกี่ยวข้องกับอะไร (แบบไม่ยืนยัน)\n" +
-    "3) แนะนำสิ่งที่เจ้าของทำได้ทันทีที่ปลอดภัย\n" +
-    "4) บอกสัญญาณอันตรายที่ควรพบสัตวแพทย์ทันที\n" +
-    "5) ย้ำเสมอว่านี่ไม่ใช่การวินิจฉัยโรค";
-
-  const body = {
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: systemPrompt },
-          { text: `คำถามเกี่ยวกับอาการสัตว์เลี้ยง: ${userText}` },
-        ],
-      },
-    ],
-  };
-
-  try {
-    const res = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" +
-        encodeURIComponent(GEMINI_API_KEY),
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      }
-    );
-
-    if (!res.ok) {
-      throw new Error("Gemini API error: " + res.status);
-    }
-
-    const data: any = await res.json();
-    const candidates = data.candidates || [];
-    const first = candidates[0];
-    const parts = first?.content?.parts || [];
-    const text = parts
-      .map((p: any) => (typeof p.text === "string" ? p.text : ""))
-      .join("\n")
-      .trim();
-
-    if (!text) {
-      return generateRuleBasedResponse(userText);
-    }
-
-    // ถ้าโมเดลพูดถึง "ยา" หรือการใช้ยา ให้ fallback เพื่อความปลอดภัย
-    if (/ยา|ยาฆ่าเชื้อ|ยาปฏิชีวนะ|ยาแก้ปวด/i.test(text)) {
-      return generateRuleBasedResponse(userText);
-    }
-
-    return text;
-  } catch {
-    return generateRuleBasedResponse(userText);
-  }
-}
+const INITIAL_MESSAGE: ChatMessage = {
+  id: '0',
+  role: 'assistant',
+  content: 'สวัสดีครับ! ฉันคือ PUP AI ผู้ช่วยดูแลสุขภาพสัตว์เลี้ยงของคุณ บอกอาการหรือสอบถามได้เลยครับ',
+  timestamp: new Date(),
+};
 
 const AIChat = () => {
-  const [messages, setMessages] = useState<ChatMessage[]>(mockChatHistory);
+  const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_MESSAGE]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const { t } = useI18n();
@@ -121,27 +36,24 @@ const AIChat = () => {
       id: Date.now().toString(),
       role: 'user',
       content: input,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    const next = [...messages, userMessage];
+    setMessages(next);
     setInput("");
     setIsTyping(true);
 
-    let content: string;
-    if (AI_API_ENABLED && GEMINI_API_KEY) {
-      content = await callGeminiFlash(userMessage.content);
-    } else {
-      content = generateRuleBasedResponse(userMessage.content);
-    }
+    const content = await chatComplete(
+      next.map(m => ({ role: m.role, content: m.content }))
+    );
 
-    const aiResponse: ChatMessage = {
+    setMessages(prev => [...prev, {
       id: (Date.now() + 1).toString(),
       role: 'assistant',
       content,
       timestamp: new Date(),
-    };
-    setMessages((prev) => [...prev, aiResponse]);
+    }]);
     setIsTyping(false);
   };
 
