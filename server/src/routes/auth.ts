@@ -1,181 +1,93 @@
 import { Router } from 'express';
+import { createClient } from '@supabase/supabase-js';
 import { prisma } from '../lib/prisma';
 import { requireAuth } from '../middleware/auth';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { sendPasswordResetEmail } from '../lib/mailer';
 import { createUserSession } from './user-activity';
 
 export const authRouter = Router();
 
-authRouter.post('/register', async (req, res) => {
-  const { email, password, name, role } = req.body as { email: string; password: string; name?: string; role?: 'user'|'hospital'|'admin' };
-  if(!email || !password || !name || name.trim().length === 0) {
-    return res.status(400).json({ error: 'name, email and password are required' });
-  }
-  const exists = await prisma.user.findUnique({ where: { email } });
-  if(exists) return res.status(409).json({ error: 'email already exists' });
-  const password_hash = await bcrypt.hash(password, 10);
-  const user = await prisma.user.create({ data: { email, password_hash, name: name || '', role: role || 'user' } });
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-  // ถ้าเป็นบัญชีโรงพยาบาล ให้สร้างโปรไฟล์ Hospital ผูกกับ user.id ทันที
-  if ((role || 'user') === 'hospital') {
-    const hospitalName = name && name.trim().length > 0 ? name : 'โรงพยาบาลสัตว์ของฉัน';
-    await prisma.hospital.create({
-      data: {
-        id: user.id,
-        name: hospitalName,
-      },
-    });
+// เรียกหลังจาก Supabase signup สำเร็จ — สร้าง User record ในฐานข้อมูล
+authRouter.post('/complete-profile', async (req, res) => {
+  const { name, role } = req.body as { name: string; role?: 'user' | 'hospital' | 'admin' };
+  const header = req.headers.authorization;
+  if (!header) return res.status(401).json({ error: 'Unauthorized' });
+  const token = header.replace('Bearer ', '');
+
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !user) return res.status(401).json({ error: 'Invalid token' });
+
+  if (!name || name.trim().length === 0) {
+    return res.status(400).json({ error: 'name is required' });
   }
 
-  res.json({ id: user.id, email: user.email, role: user.role });
-});
+  const existing = await prisma.user.findUnique({ where: { supabase_uid: user.id } });
+  if (existing) return res.json({ id: existing.id, email: existing.email, role: existing.role, name: existing.name });
 
-authRouter.post('/login', async (req, res) => {
-  const { email, password, role } = req.body as { email: string; password: string; role?: 'user'|'hospital'|'admin' };
-  if (!email || !password || !role) {
-    return res.status(400).json({ error: 'email, password and role are required' });
-  }
-  const user = await prisma.user.findUnique({ where: { email } });
-  if(!user || user.role !== role) return res.status(401).json({ error: 'invalid credentials' });
-  const ok = await bcrypt.compare(password, user.password_hash);
-  if(!ok) return res.status(401).json({ error: 'invalid credentials' });
-  const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET || 'devsecret', { expiresIn: '7d' });
-  
-  // บันทึก session สำหรับ user role เท่านั้น
-  if (user.role === 'user') {
-    const ipAddress = req.ip || req.headers['x-forwarded-for'] as string || undefined;
-    const userAgent = req.headers['user-agent'] || undefined;
-    await createUserSession(user.id, ipAddress, userAgent);
-  }
-  
-  res.json({ token, user: { id: user.id, email: user.email, role: user.role, name: user.name } });
-});
-
-authRouter.post('/forgot-password', async (req, res) => {
-  const { email } = req.body as { email?: string };
-  if (!email) {
-    return res.status(400).json({ error: 'email is required' });
-  }
-
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    return res.json({ ok: true });
-  }
-
-  const secret = (process.env.JWT_SECRET || 'devsecret') + '|reset';
-  const token = jwt.sign({ id: user.id }, secret, { expiresIn: '30m' });
-
-  const frontendBase = process.env.FRONTEND_BASE_URL || 'http://localhost:5173';
-  const resetLink = `${frontendBase}/reset-password/${token}`;
-
-  try {
-    await sendPasswordResetEmail(user.email, resetLink);
-  } catch (e) {
-    console.error('Failed to send reset email', e);
-  }
-
-  res.json({ ok: true });
-});
-
-authRouter.post('/reset-password', async (req, res) => {
-  const { token, newPassword } = req.body as { token?: string; newPassword?: string };
-
-  if (!token || !newPassword || newPassword.length < 6) {
-    return res.status(400).json({ error: 'invalid payload' });
-  }
-
-  try {
-    const secret = (process.env.JWT_SECRET || 'devsecret') + '|reset';
-    const payload = jwt.verify(token, secret) as { id: string };
-
-    const user = await prisma.user.findUnique({ where: { id: payload.id } });
-    if (!user) {
-      return res.status(404).json({ error: 'user not found' });
-    }
-
-    const password_hash = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({ where: { id: user.id }, data: { password_hash } });
-
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('reset-password error', e);
-    return res.status(400).json({ error: 'invalid or expired token' });
-  }
-});
-
-// เปลี่ยนรหัสผ่านสำหรับผู้ใช้ที่ล็อกอินอยู่
-authRouter.post('/change-password', requireAuth(['user','hospital','admin']), async (req, res) => {
-  const authUser = (req as any).user as { id: string; role: 'user'|'hospital'|'admin' };
-  const { oldPassword, newPassword } = req.body as { oldPassword: string; newPassword: string };
-
-  if (!oldPassword || !newPassword || newPassword.length < 6) {
-    return res.status(400).json({ error: 'invalid password payload' });
-  }
-
-  const dbUser = await prisma.user.findUnique({ where: { id: authUser.id } });
-  if (!dbUser) return res.status(404).json({ error: 'user not found' });
-
-  const ok = await bcrypt.compare(oldPassword, dbUser.password_hash);
-  if (!ok) return res.status(401).json({ error: 'old password incorrect' });
-
-  const newHash = await bcrypt.hash(newPassword, 10);
-  await prisma.user.update({ where: { id: authUser.id }, data: { password_hash: newHash } });
-
-  // แจ้งเตือนเมื่อมีการเปลี่ยนรหัสผ่าน
-  await prisma.notification.create({
-    data: {
-      userId: authUser.id,
-      type: authUser.role === 'hospital' ? 'PASSWORD_CHANGED_HOSPITAL' : 'PASSWORD_CHANGED',
-      title: 'เปลี่ยนรหัสผ่านสำเร็จ',
-      message: 'คุณได้ทำการเปลี่ยนรหัสผ่านของบัญชีเรียบร้อยแล้ว',
-    },
+  const targetRole = (role === 'hospital' || role === 'admin') ? role : 'user';
+  const dbUser = await prisma.user.create({
+    data: { supabase_uid: user.id, email: user.email!, name: name.trim(), role: targetRole },
   });
 
-  res.json({ ok: true });
-});
-
-// Admin: สร้างบัญชีใหม่ (admin หรือ hospital) พร้อมบันทึก ActivityLog
-authRouter.post('/admin/register', requireAuth(['admin']), async (req, res) => {
-  const { email, password, name, role } = req.body as { email: string; password: string; name?: string; role?: 'user'|'hospital'|'admin' };
-  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
-
-  // อนุญาตให้ admin สร้างเฉพาะบัญชี admin หรือ hospital
-  const targetRole: 'hospital' | 'admin' = (role === 'hospital' ? 'hospital' : 'admin');
-
-  const exists = await prisma.user.findUnique({ where: { email } });
-  if (exists) return res.status(409).json({ error: 'email already exists' });
-
-  const password_hash = await bcrypt.hash(password, 10);
-  const user = await prisma.user.create({ data: { email, password_hash, name: name || '', role: targetRole } });
-
-  // ถ้าสร้างบัญชีโรงพยาบาล ให้สร้างโปรไฟล์ Hospital ผูกกับ user.id ทันที
   if (targetRole === 'hospital') {
-    const hospitalName = name && name.trim().length > 0 ? name : 'โรงพยาบาลสัตว์ของฉัน';
-    await prisma.hospital.create({
-      data: {
-        id: user.id,
-        name: hospitalName,
-      },
-    });
+    await prisma.hospital.create({ data: { id: dbUser.id, name: name.trim() } });
   }
 
-  const admin = (req as any).user as { id: string; role: 'admin' };
+  if (targetRole === 'user') {
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] as string || undefined;
+    const userAgent = req.headers['user-agent'] || undefined;
+    await createUserSession(dbUser.id, ipAddress, userAgent);
+  }
+
+  res.json({ id: dbUser.id, email: dbUser.email, role: dbUser.role, name: dbUser.name });
+});
+
+// Admin: สร้างบัญชี hospital หรือ admin ผ่าน Supabase Auth
+authRouter.post('/admin/register', requireAuth(['admin']), async (req, res) => {
+  const { email, password, name, role } = req.body as { email: string; password: string; name?: string; role?: 'hospital' | 'admin' };
+  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+
+  const targetRole: 'hospital' | 'admin' = role === 'hospital' ? 'hospital' : 'admin';
+
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email, password, email_confirm: true,
+  });
+  if (authError) return res.status(400).json({ error: authError.message });
+
+  const dbUser = await prisma.user.create({
+    data: { supabase_uid: authData.user.id, email, name: name || '', role: targetRole },
+  });
+
+  if (targetRole === 'hospital') {
+    await prisma.hospital.create({ data: { id: dbUser.id, name: name || 'โรงพยาบาลสัตว์ของฉัน' } });
+  }
+
+  const admin = (req as any).user as { id: string };
   await prisma.activityLog.create({
     data: {
       adminId: admin.id,
       action: targetRole === 'admin' ? 'CREATE_ADMIN' : 'CREATE_HOSPITAL',
-      details: targetRole === 'admin'
-        ? `สร้างบัญชีผู้ดูแลใหม่ email=${email}`
-        : `สร้างบัญชีโรงพยาบาลใหม่ email=${email}`,
+      details: `สร้างบัญชี ${targetRole} email=${email}`,
     },
   });
 
-  res.json({ id: user.id, email: user.email, role: user.role });
+  res.json({ id: dbUser.id, email: dbUser.email, role: dbUser.role });
 });
 
-// Admin: รายชื่อผู้ดูแลทั้งหมดในระบบ
+// ดึงข้อมูล user ปัจจุบันจาก token
+authRouter.get('/me', requireAuth(), async (req, res) => {
+  const user = (req as any).user as { id: string; role: string };
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { id: true, email: true, name: true, role: true },
+  });
+  res.json(dbUser);
+});
+
 authRouter.get('/admins', requireAuth(['admin']), async (_req, res) => {
   const admins = await prisma.user.findMany({
     where: { role: 'admin' },
@@ -185,7 +97,6 @@ authRouter.get('/admins', requireAuth(['admin']), async (_req, res) => {
   res.json(admins);
 });
 
-// Admin: รายชื่อบัญชีโรงพยาบาลทั้งหมด (role hospital)
 authRouter.get('/hospital-users', requireAuth(['admin']), async (_req, res) => {
   const hospitals = await prisma.user.findMany({
     where: { role: 'hospital' },
@@ -195,44 +106,31 @@ authRouter.get('/hospital-users', requireAuth(['admin']), async (_req, res) => {
   res.json(hospitals);
 });
 
-// Admin: ลบบัญชีโรงพยาบาล (user role=hospital) พร้อมข้อมูลที่เกี่ยวข้อง
 authRouter.delete('/hospital-users/:id', requireAuth(['admin']), async (req, res) => {
   const { id } = req.params;
-  const admin = (req as any).user as { id: string; role: 'admin' };
+  const admin = (req as any).user as { id: string };
 
-  try {
-    // ตรวจสอบว่ามี user และเป็น role hospital จริงหรือไม่
-    const user = await prisma.user.findUnique({ where: { id } });
-    if (!user || user.role !== 'hospital') {
-      return res.status(404).json({ error: 'hospital user not found' });
-    }
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user || user.role !== 'hospital') return res.status(404).json({ error: 'hospital user not found' });
 
-    // ใช้ transaction เพื่อลบข้อมูลทุกอย่างที่อ้างอิงบัญชีโรงพยาบาลนี้
-    await prisma.$transaction([
-      prisma.notification.deleteMany({ where: { userId: id } }),
-      prisma.pet.deleteMany({ where: { ownerId: id } }),
-      prisma.appointment.deleteMany({ where: { hospitalId: id } }),
-      prisma.vaccination.deleteMany({ where: { hospitalId: id } }),
-      prisma.hospital.deleteMany({ where: { id } }),
-      prisma.user.delete({ where: { id } }),
-    ]);
+  await supabaseAdmin.auth.admin.deleteUser(user.supabase_uid);
 
-    await prisma.activityLog.create({
-      data: {
-        adminId: admin.id,
-        action: 'DELETE_HOSPITAL_USER',
-        details: `ลบบัญชีโรงพยาบาล id=${id}`,
-      },
-    });
+  await prisma.$transaction([
+    prisma.notification.deleteMany({ where: { userId: id } }),
+    prisma.pet.deleteMany({ where: { ownerId: id } }),
+    prisma.appointment.deleteMany({ where: { hospitalId: id } }),
+    prisma.vaccination.deleteMany({ where: { hospitalId: id } }),
+    prisma.hospital.deleteMany({ where: { id } }),
+    prisma.user.delete({ where: { id } }),
+  ]);
 
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('Error deleting hospital user', id, e);
-    return res.status(400).json({ error: 'unable to delete hospital user' });
-  }
+  await prisma.activityLog.create({
+    data: { adminId: admin.id, action: 'DELETE_HOSPITAL_USER', details: `ลบบัญชีโรงพยาบาล id=${id}` },
+  });
+
+  res.json({ ok: true });
 });
 
-// Admin: รายชื่อผู้ใช้ทั้งหมด (role user)
 authRouter.get('/users', requireAuth(['admin']), async (_req, res) => {
   const users = await prisma.user.findMany({
     where: { role: 'user' },
@@ -242,82 +140,43 @@ authRouter.get('/users', requireAuth(['admin']), async (_req, res) => {
   res.json(users);
 });
 
-// Admin: รายละเอียดผู้ใช้คนหนึ่ง รวมสัตว์เลี้ยง + นัดหมาย + วัคซีน
 authRouter.get('/users/:id/detail', requireAuth(['admin']), async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.params.id },
     select: {
-      id: true,
-      email: true,
-      name: true,
-      createdAt: true,
+      id: true, email: true, name: true, createdAt: true,
       pets: {
         select: {
-          id: true,
-          petId: true,
-          name: true,
-          type: true,
-          breed: true,
-          age: true,
-          weight: true,
-          gender: true,
-          medicalNotes: true,
-          appointments: {
-            select: {
-              id: true,
-              date: true,
-              time: true,
-              status: true,
-              reason: true,
-              hospital: { select: { id: true, name: true } },
-            },
-          },
-          vaccinations: {
-            select: {
-              id: true,
-              vaccineName: true,
-              date: true,
-              nextDate: true,
-              hospital: { select: { id: true, name: true } },
-            },
-          },
+          id: true, petId: true, name: true, type: true, breed: true,
+          age: true, weight: true, gender: true, medicalNotes: true,
+          appointments: { select: { id: true, date: true, time: true, status: true, reason: true, hospital: { select: { id: true, name: true } } } },
+          vaccinations: { select: { id: true, vaccineName: true, date: true, nextDate: true, hospital: { select: { id: true, name: true } } } },
         },
       },
     },
   });
-
   if (!user) return res.status(404).json({ error: 'user not found' });
   res.json(user);
 });
 
-// Admin: ลบผู้ใช้ (role user) พร้อมสัตว์เลี้ยง การแจ้งเตือน และประวัติที่เกี่ยวข้อง
 authRouter.delete('/users/:id', requireAuth(['admin']), async (req, res) => {
   const { id } = req.params;
-  const admin = (req as any).user as { id: string; role: 'admin' };
+  const admin = (req as any).user as { id: string };
 
-  try {
-    // ใช้ transaction เพื่อความปลอดภัยของข้อมูล
-    await prisma.$transaction([
-      // ลบการแจ้งเตือนทั้งหมดของ user ก่อน (กัน FK constraint)
-      prisma.notification.deleteMany({ where: { userId: id } }),
-      // ลบสัตว์เลี้ยงทั้งหมดของ user (จะ cascade นัดหมาย/วัคซีน/เวชระเบียนต่อเอง)
-      prisma.pet.deleteMany({ where: { ownerId: id } }),
-      // แล้วลบ user
-      prisma.user.delete({ where: { id } }),
-    ]);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return res.status(404).json({ error: 'user not found' });
 
-    // บันทึก ActivityLog ของผู้ดูแล แยก transaction ได้
-    await prisma.activityLog.create({
-      data: {
-        adminId: admin.id,
-        action: 'DELETE_USER',
-        details: `ลบบัญชีผู้ใช้ id=${id}`,
-      },
-    });
+  await supabaseAdmin.auth.admin.deleteUser(user.supabase_uid);
 
-    res.json({ ok: true });
-  } catch (e) {
-    console.error('Error deleting user', id, e);
-    return res.status(400).json({ error: 'unable to delete user' });
-  }
+  await prisma.$transaction([
+    prisma.notification.deleteMany({ where: { userId: id } }),
+    prisma.pet.deleteMany({ where: { ownerId: id } }),
+    prisma.user.delete({ where: { id } }),
+  ]);
+
+  await prisma.activityLog.create({
+    data: { adminId: admin.id, action: 'DELETE_USER', details: `ลบบัญชีผู้ใช้ id=${id}` },
+  });
+
+  res.json({ ok: true });
 });

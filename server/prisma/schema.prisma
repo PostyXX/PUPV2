@@ -9,8 +9,8 @@ datasource db {
 
 model User {
   id            String   @id @default(cuid())
+  supabase_uid  String   @unique
   email         String   @unique
-  password_hash String
   name          String
   phone         String?
   address       String?
