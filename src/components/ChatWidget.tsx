@@ -63,15 +63,15 @@ export default function ChatWidget() {
       )}
 
       {open && (
-        <Card className="w-[360px] max-h-[70vh] shadow-luxury animate-scale-in">
-          <CardHeader className="p-4 border-b flex items-center justify-between">
+        <Card className="w-[360px] h-[70vh] max-h-[520px] shadow-luxury animate-scale-in flex flex-col">
+          <CardHeader className="p-4 border-b flex items-center justify-between shrink-0">
             <CardTitle className="text-base">{t('chat.widget.title')}</CardTitle>
             <Button variant="ghost" size="icon" onClick={() => setOpen(false)}>
               <X className="w-4 h-4" />
             </Button>
           </CardHeader>
-          <CardContent className="p-0 flex flex-col">
-            <div ref={listRef} className="flex-1 overflow-auto p-3 space-y-3 bg-muted/20">
+          <CardContent className="p-0 flex flex-col flex-1 overflow-hidden min-h-0">
+            <div ref={listRef} className="flex-1 overflow-y-auto p-3 space-y-3 bg-muted/20 min-h-0">
               {messages.map((m, i) => (
                 <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
                   <div
