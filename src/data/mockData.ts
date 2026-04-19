@@ -229,18 +229,3 @@ export const mockVaccinations: Vaccination[] = [
   }
 ];
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
-
-export const mockChatHistory: ChatMessage[] = [
-  {
-    id: '1',
-    role: 'assistant',
-    content: 'สวัสดีค่ะ! ฉันคือ AI คุณหมอเสมือนของ PUP 🐾 ยินดีให้คำปรึกษาเกี่ยวกับสุขภาพสัตว์เลี้ยงของคุณค่ะ มีอาการอะไรที่อยากปรึกษาไหมคะ?',
-    timestamp: new Date()
-  }
-];
