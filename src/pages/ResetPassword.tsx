@@ -1,15 +1,13 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+import { supabase } from "@/lib/supabase";
 
 const ResetPassword = () => {
-  const { token } = useParams<{ token: string }>();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [password, setPassword] = useState("");
@@ -18,14 +16,6 @@ const ResetPassword = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!token) {
-      toast({
-        title: "ลิงก์ไม่ถูกต้อง",
-        description: "ไม่พบ token สำหรับรีเซ็ตรหัสผ่าน",
-        variant: "destructive",
-      });
-      return;
-    }
 
     if (password !== confirmPassword) {
       toast({
@@ -37,20 +27,9 @@ const ResetPassword = () => {
     }
 
     setIsLoading(true);
-
     try {
-      const res = await fetch(`${API_BASE}/auth/reset-password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ token, newPassword: password }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "ไม่สามารถรีเซ็ตรหัสผ่านได้");
-      }
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw new Error(error.message);
 
       toast({
         title: "รีเซ็ตรหัสผ่านสำเร็จ",
