@@ -2,28 +2,12 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/index.js",
-      "use": "@vercel/node",
-      "config": { "includeFiles": ["server/dist/**"] }
-    },
-    {
       "src": "package.json",
       "use": "@vercel/static-build",
       "config": { "distDir": "dist" }
     }
   ],
   "routes": [
-    { "src": "/auth/(.*)", "dest": "/api/index.js" },
-    { "src": "/users/(.*)", "dest": "/api/index.js" },
-    { "src": "/pets/(.*)", "dest": "/api/index.js" },
-    { "src": "/hospitals/(.*)", "dest": "/api/index.js" },
-    { "src": "/appointments/(.*)", "dest": "/api/index.js" },
-    { "src": "/vaccinations/(.*)", "dest": "/api/index.js" },
-    { "src": "/medical-records/(.*)", "dest": "/api/index.js" },
-    { "src": "/activity-logs/(.*)", "dest": "/api/index.js" },
-    { "src": "/notifications/(.*)", "dest": "/api/index.js" },
-    { "src": "/user-activity/(.*)", "dest": "/api/index.js" },
-    { "src": "/health", "dest": "/api/index.js" },
     { "src": "/assets/(.*)", "dest": "/assets/$1" },
     { "src": "/(.*\\.(js|css|ico|png|svg|woff|woff2|ttf|eot|json|map))", "dest": "/$1" },
     { "src": "/(.*)", "dest": "/index.html" }
